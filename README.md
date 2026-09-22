@@ -16,4 +16,4 @@ Açarlar yalnız ASCII (latın hərfləri, rəqəmlər) olmalıdır.
 - `x-admin-key`: admin (ləğv/redaktə, oyunçu idarəsi, tarixçə, CSV ixrac)
 
 ## Növbəti mərhələlər
-2. Səhifə bu API-yə qoşulur  3. Claude rəyi  4. Backup (GitHub Actions)  5. Cloudflare-ə yerləşdirmə və domen  6. Köhnə datanın köçürülməsi
+2. Səhifə bu API-yə qoşulur  3. Claude rəyi  4. Backup (GitHub Actions)  5. Cloudflare-ə yerləşdirmə və domen  6. Köhnə datanın köçürülməsi 
