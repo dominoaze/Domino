@@ -1,0 +1,69 @@
+<!doctype html><html lang="az"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Domino statistika</title>
+<style>
+:root{--bg:#f6f5f1;--fg:#1d1d1b;--mut:#6b6a63;--card:#fff;--bd:#e2e0d8;--ac:#0f766e;--bad:#b91c1c}
+@media(prefers-color-scheme:dark){:root{--bg:#151514;--fg:#eceae2;--mut:#9a988e;--card:#1f1f1d;--bd:#33322e;--ac:#2dd4bf;--bad:#f87171}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,sans-serif}
+main{max-width:820px;margin:0 auto;padding:16px}.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin:12px 0}
+h1{font-size:20px;margin:6px 0}h2{font-size:15px;margin:0 0 8px}.mut{color:var(--mut)}.neg{color:var(--bad)}.sm{font-size:12px}
+table{border-collapse:collapse;width:100%;font-size:13px}.sc{overflow-x:auto}th,td{padding:5px 7px;border-bottom:1px solid var(--bd);text-align:center;white-space:nowrap}
+th{color:var(--mut);cursor:pointer}td:nth-child(2),th:nth-child(2){text-align:left}
+select,input,button{font:inherit;padding:7px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--fg)}
+button{cursor:pointer}#pAdd,#gLogin,#aLogin{background:var(--ac);color:#fff;border:0}
+#fm,#login{display:flex;flex-wrap:wrap;gap:8px;align-items:end}label{display:flex;flex-direction:column;font-size:12px;color:var(--mut)}
+.x td{opacity:.45;text-decoration:line-through}#err{color:var(--bad)}
+</style></head><body><main>
+<h1>🎲 Domino statistika</h1>
+<section class="card" id="loginBox"><h2>Giriş</h2><div id="login"></div><p id="err" class="sm"></p></section>
+<div id="app" hidden>
+<section class="card"><p class="mut sm" id="sub" style="margin:0"></p></section>
+<section class="card"><h2>Yeni oyun</h2><div id="fm"></div><p id="ferr" class="neg sm"></p></section>
+<section class="card"><h2>Reytinq</h2><div class="sc"><table id="lb"></table></div></section>
+<section class="card"><h2>Admin paneli</h2><div id="adm"></div></section>
+</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let GK=localStorage.getItem('gk')||'',AK=localStorage.getItem('ak')||'',ROLE=null,ST=null,PROF=null;
+async function api(path,opts={}){const h={...(opts.headers||{})};if(AK)h['x-admin-key']=AK;else if(GK)h['x-group-key']=GK;
+const r=await fetch('/api'+path,{...opts,headers:h});const j=await r.json().catch(()=>({}));if(!r.ok){throw {status:r.status,msg:j.error||('xəta '+r.status)}}return j}
+function loginForm(){$('login').innerHTML=`<label>Qrup açarı<input id="gk" value="${GK}"></label><button id="gLogin">Giriş</button> <span class="mut sm">və ya</span> <label>Admin açarı<input id="ak" type="password" value="${AK}"></label><button id="aLogin">Admin girişi</button>`;
+$('gLogin').onclick=()=>{GK=$('gk').value.trim();AK='';localStorage.setItem('gk',GK);localStorage.removeItem('ak');boot()};
+$('aLogin').onclick=()=>{AK=$('ak').value.trim();localStorage.setItem('ak',AK);boot()}}
+async function boot(){loginForm();try{const w=await api('/whoami');ROLE=w.role;$('err').textContent='';$('app').hidden=false;await load()}catch(e){$('app').hidden=true;if(GK||AK)$('err').textContent='Giriş açarı yanlışdır.'}}
+async function load(){ST=await api('/state');render()}
+function activeMatches(){return ST.matches.filter(m=>!m.cancelled)}
+function calc(){const P={};ST.players.forEach(p=>P[p.id]={...p,g:0,w:0,l:0,pts:0,s:0});
+activeMatches().forEach(m=>{[[[m.w1,m.w2],1],[[m.l1,m.l2],-1]].forEach(([t,sg])=>t.forEach(id=>{const q=P[id];if(!q)return;q.g++;sg>0?q.w++:q.l++;q.pts+=sg*m.result;q.s=sg>0?(q.s>0?q.s+1:1):(q.s<0?q.s-1:-1)}))});return P}
+function pname(id){const p=ST.players.find(x=>x.id==id);return p?p.name:'?'}
+function render(){const P=calc(),L=Object.values(P).filter(q=>q.g).sort((a,b)=>b.pts-a.pts);
+$('sub').textContent=`${activeMatches().length} oyun · ${ST.players.filter(p=>!p.archived).length} aktiv oyunçu · rol: ${ROLE}`;
+$('lb').innerHTML='<tr><th>#</th><th>Oyunçu</th><th>Oyun</th><th>Q</th><th>M</th><th>Q%</th><th>Xal</th><th>Seriya</th></tr>'+
+L.map((q,i)=>`<tr><td>${i+1}</td><td>${q.name}${q.archived?' <span class="mut sm">(arxiv)</span>':''}</td><td>${q.g}</td><td>${q.w}</td><td>${q.l}</td><td>${Math.round(q.w/q.g*100)}%</td><td class="${q.pts<0?'neg':''}">${q.pts>0?'+':''}${q.pts}</td><td>${q.s>0?q.s+'Q':-q.s+'M'}</td></tr>`).join('');
+frm();rAdm()}
+function activeOpts(exclude=[]){return ST.players.filter(p=>!p.archived&&!exclude.includes(p.id))}
+function frm(){const opt=p=>`<option value="${p.id}">${p.name}</option>`;
+$('fm').innerHTML=`<label>Qalib 1<select id="w1">${activeOpts().map(opt).join('')}</select></label>
+<label>Qalib 2<select id="w2">${activeOpts().map(opt).join('')}</select></label>
+<label>Məğlub 1<select id="l1">${activeOpts().map(opt).join('')}</select></label>
+<label>Məğlub 2<select id="l2">${activeOpts().map(opt).join('')}</select></label>
+<label>Nəticə<select id="r"><option>1</option><option>2</option><option>3</option></select></label>
+<button id="add">Əlavə et</button>`;
+$('add').onclick=async()=>{$('ferr').textContent='';const w=[+$('w1').value,+$('w2').value],l=[+$('l1').value,+$('l2').value],r=+$('r').value;
+try{await api('/matches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({w,l,r})});await load()}
+catch(e){if(e.status===409){if(confirm('Bu oyun artıq son oyun kimi qeyd olunub. Yenə də əlavə edilsin?')){try{await api('/matches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({w,l,r,confirm:true})});await load()}catch(e2){$('ferr').textContent=e2.msg}}}
+else $('ferr').textContent=e.msg}}}
+function rAdm(){if(ROLE!=='admin'){$('adm').innerHTML='<p class="mut sm">Yalnız admin görə bilər.</p>';return}
+$('adm').innerHTML=`<p><input id="npName" placeholder="Yeni oyunçu adı"><button id="npAdd">Əlavə et</button>
+&nbsp; <select id="dp">${ST.players.filter(p=>!p.archived).map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select><button id="dpDel">Sil/arxivlə</button>
+&nbsp; <button id="csv">CSV yüklə</button> <button id="logbtn">Tarixçə</button></p>
+<div class="sc"><table>${[...ST.matches].slice(-25).reverse().map(m=>`<tr class="${m.cancelled?'x':''}"><td>${m.played_at.slice(0,16).replace('T',' ')}</td><td>${pname(m.w1)}–${pname(m.w2)}</td><td>${pname(m.l1)}–${pname(m.l2)}</td><td><select data-r="${m.id}"><option ${m.result==1?'selected':''}>1</option><option ${m.result==2?'selected':''}>2</option><option ${m.result==3?'selected':''}>3</option></select></td><td><button data-c="${m.id}" data-v="${m.cancelled?0:1}">${m.cancelled?'Bərpa':'Ləğv et'}</button></td></tr>`).join('')}</table></div>
+<div id="logbox"></div>`;
+$('npAdd').onclick=async()=>{try{await api('/admin/players',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:$('npName').value})});await load()}catch(e){alert(e.msg)}};
+$('dpDel').onclick=async()=>{try{await api('/admin/players/'+$('dp').value,{method:'DELETE'});await load()}catch(e){alert(e.msg)}};
+$('csv').onclick=()=>{const h=AK?{'x-admin-key':AK}:{};fetch('/api/admin/export.csv',{headers:h}).then(r=>r.blob()).then(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='domino-oyunlar.csv';a.click()})};
+$('logbtn').onclick=async()=>{const l=await api('/admin/log');$('logbox').innerHTML='<ul class="sm">'+l.map(x=>`<li>${x.at.slice(0,16).replace('T',' ')} — ${x.action}: ${x.detail||''}</li>`).join('')+'</ul>'};
+document.querySelectorAll('[data-c]').forEach(b=>b.onclick=async()=>{try{await api('/admin/matches/'+b.dataset.c,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({cancelled:!!+b.dataset.v})});await load()}catch(e){alert(e.msg)}});
+document.querySelectorAll('[data-r]').forEach(s=>s.onchange=async()=>{try{await api('/admin/matches/'+s.dataset.r,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({result:+s.value})});await load()}catch(e){alert(e.msg)}})}
+$('lb').addEventListener('click',()=>{});
+boot();
+</script></body></html>
