@@ -4,6 +4,6 @@
   "compatibility_date": "2025-09-01",
   "assets": { "directory": "./public", "run_worker_first": ["/api/*"] },
   "d1_databases": [
-    { "binding": "DB", "database_name": "domino", "database_id": "REPLACE_AFTER_CREATE", "migrations_dir": "migrations" }
+    { "binding": "DB", "database_name": "domino", "database_id": "03f7ed7a-97bb-4fb8-8abb-c8316711016b", "migrations_dir": "migrations" }
   ]
 }
