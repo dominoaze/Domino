@@ -100,7 +100,6 @@ async function exportCsv(env) {
 }
 
 async function route(req, env) {
-  async function route(req, env) {
   const { pathname: p } = new URL(req.url), m = req.method;
   if (p === '/api/debug') return J({ hasGroup: !!env.GROUP_KEY, hasAdmin: !!env.ADMIN_KEY, groupLen: (env.GROUP_KEY || '').length, adminLen: (env.ADMIN_KEY || '').length });
   const role = await roleOf(req, env);
