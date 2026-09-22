@@ -40,15 +40,19 @@ $('sub').textContent=`${activeMatches().length} oyun · ${ST.players.filter(p=>!
 $('lb').innerHTML='<tr><th>#</th><th>Oyunçu</th><th>Oyun</th><th>Q</th><th>M</th><th>Q%</th><th>Xal</th><th>Seriya</th></tr>'+
 L.map((q,i)=>`<tr><td>${i+1}</td><td>${q.name}${q.archived?' <span class="mut sm">(arxiv)</span>':''}</td><td>${q.g}</td><td>${q.w}</td><td>${q.l}</td><td>${Math.round(q.w/q.g*100)}%</td><td class="${q.pts<0?'neg':''}">${q.pts>0?'+':''}${q.pts}</td><td>${q.s>0?q.s+'Q':-q.s+'M'}</td></tr>`).join('');
 frm();rAdm()}
-function activeOpts(exclude=[]){return ST.players.filter(p=>!p.archived&&!exclude.includes(p.id))}
-function frm(){const opt=p=>`<option value="${p.id}">${p.name}</option>`;
-$('fm').innerHTML=`<label>Qalib 1<select id="w1">${activeOpts().map(opt).join('')}</select></label>
-<label>Qalib 2<select id="w2">${activeOpts().map(opt).join('')}</select></label>
-<label>Məğlub 1<select id="l1">${activeOpts().map(opt).join('')}</select></label>
-<label>Məğlub 2<select id="l2">${activeOpts().map(opt).join('')}</select></label>
+function activePlayers(){return ST.players.filter(p=>!p.archived)}
+function allPairs(exclude=[]){const a=activePlayers().filter(p=>!exclude.includes(p.id)),r=[];
+for(let i=0;i<a.length;i++)for(let j=i+1;j<a.length;j++)r.push([a[i],a[j]]);return r}
+function frm(){const wv=$('wp')?.value,lv=$('lp')?.value,W=allPairs(),pOpt=([x,y],v)=>`<option value="${x.id},${y.id}" ${v&&v===`${x.id},${y.id}`?'selected':''}>${x.name}–${y.name}</option>`;
+const wSel=(wv?wv.split(',').map(Number):(W[0]?[W[0][0].id,W[0][1].id]:[])),L=allPairs(wSel);
+$('fm').innerHTML=`<label>Qalib cütü<select id="wp">${W.map(p=>pOpt(p,wv)).join('')}</select></label>
+<label>Uduzan cütü<select id="lp">${L.length?L.map(p=>pOpt(p,lv)).join(''):'<option value="">— əvvəlcə fərqli qalib cütü seçin —</option>'}</select></label>
 <label>Nəticə<select id="r"><option>1</option><option>2</option><option>3</option></select></label>
 <button id="add">Əlavə et</button>`;
-$('add').onclick=async()=>{$('ferr').textContent='';const w=[+$('w1').value,+$('w2').value],l=[+$('l1').value,+$('l2').value],r=+$('r').value;
+$('wp').onchange=()=>frm();
+$('add').onclick=async()=>{$('ferr').textContent='';
+if(!$('lp').value){$('ferr').textContent='Uduzan cütü seçin';return}
+const w=$('wp').value.split(',').map(Number),l=$('lp').value.split(',').map(Number),r=+$('r').value;
 try{await api('/matches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({w,l,r})});await load()}
 catch(e){if(e.status===409){if(confirm('Bu oyun artıq son oyun kimi qeyd olunub. Yenə də əlavə edilsin?')){try{await api('/matches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({w,l,r,confirm:true})});await load()}catch(e2){$('ferr').textContent=e2.msg}}}
 else $('ferr').textContent=e.msg}}}
