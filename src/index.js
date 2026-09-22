@@ -38,7 +38,8 @@ async function addMatch(req, env, role) {
     return J({ error: 'Bu oyun artıq son oyun kimi qeyd olunub', duplicate: true }, 409);
   }
   const by = String(b.by || (role === 'admin' ? 'admin' : 'üzv')).slice(0, 40);
-  const res = await env.DB.prepare('INSERT INTO matches(w1,w2,l1,l2,result,created_by) VALUES(?,?,?,?,?,?)').bind(w[0], w[1], l[0], l[1], r, by).run();
+  const comment = b.comment ? String(b.comment).slice(0, 300) : null;
+  const res = await env.DB.prepare('INSERT INTO matches(w1,w2,l1,l2,result,created_by,comment) VALUES(?,?,?,?,?,?,?)').bind(w[0], w[1], l[0], l[1], r, by, comment).run();
   const id = res.meta.last_row_id;
   await log(env, by, 'oyun əlavə edildi', `#${id}: ${w} qalib, ${l} məğlub, nəticə ${r}${b.confirm ? ' (təkrar təsdiqləndi)' : ''}`);
   return J({ id }, 201);
@@ -91,11 +92,11 @@ async function removePlayer(env, id) {
 
 async function exportCsv(env) {
   const { results } = await env.DB.prepare(
-    `SELECT m.id, m.played_at, a.name w1, b.name w2, c.name l1, d.name l2, m.result, m.cancelled, m.created_by
+    `SELECT m.id, m.played_at, a.name w1, b.name w2, c.name l1, d.name l2, m.result, m.cancelled, m.created_by, m.comment
      FROM matches m JOIN players a ON a.id=m.w1 JOIN players b ON b.id=m.w2 JOIN players c ON c.id=m.l1 JOIN players d ON d.id=m.l2 ORDER BY m.id`).all();
   const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const head = 'id,played_at,winner1,winner2,loser1,loser2,result,cancelled,created_by';
-  const rows = results.map((r) => [r.id, r.played_at, r.w1, r.w2, r.l1, r.l2, r.result, r.cancelled, r.created_by].map(q).join(','));
+  const head = 'id,played_at,winner1,winner2,loser1,loser2,result,cancelled,created_by,comment';
+  const rows = results.map((r) => [r.id, r.played_at, r.w1, r.w2, r.l1, r.l2, r.result, r.cancelled, r.created_by, r.comment].map(q).join(','));
   return new Response('\uFEFF' + [head, ...rows].join('\n'), { headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="domino-oyunlar.csv"' } });
 }
 
@@ -108,7 +109,7 @@ async function route(req, env) {
   if (p === '/api/state' && m === 'GET') {
     const [pl, ma] = await Promise.all([
       env.DB.prepare('SELECT id,name,archived FROM players ORDER BY id').all(),
-      env.DB.prepare('SELECT id,played_at,w1,w2,l1,l2,result,cancelled FROM matches ORDER BY id').all(),
+      env.DB.prepare('SELECT id,played_at,w1,w2,l1,l2,result,cancelled,comment FROM matches ORDER BY id').all(),
     ]);
     return J({ players: pl.results, matches: ma.results });
   }
