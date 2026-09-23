@@ -105,10 +105,13 @@ const w=$('wp').value.split(',').map(Number),l=$('lp').value.split(',').map(Numb
 try{await api('/matches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({w,l,r,comment})});ssn='';await load()}
 catch(e){if(e.status===409){if(confirm('Bu oyun artıq son oyun kimi qeyd olunub. Yenə də əlavə edilsin?')){try{await api('/matches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({w,l,r,comment,confirm:true})});ssn='';await load()}catch(e2){$('ferr').textContent=e2.msg}}}
 else $('ferr').textContent=e.msg}}}
-function parseCSV(text){const rows=[];let row=[],cur='',q=false;text=text.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n');
+function parseCSV(text){text=text.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n');
+const head0=text.split('\n')[0]||'';
+const delim=(head0.match(/\t/g)||[]).length>=(head0.match(/,/g)||[]).length&&(head0.match(/\t/g)||[]).length>=(head0.match(/;/g)||[]).length?'\t':((head0.match(/;/g)||[]).length>(head0.match(/,/g)||[]).length?';':',');
+const rows=[];let row=[],cur='',q=false;
 for(let i=0;i<text.length;i++){const c=text[i];
 if(q){if(c=='"'){if(text[i+1]=='"'){cur+='"';i++}else q=false}else cur+=c}
-else{if(c=='"')q=true;else if(c==','){row.push(cur);cur=''}else if(c=='\n'){row.push(cur);rows.push(row);row=[];cur=''}else cur+=c}}
+else{if(c=='"')q=true;else if(c==delim){row.push(cur);cur=''}else if(c=='\n'){row.push(cur);rows.push(row);row=[];cur=''}else cur+=c}}
 if(cur.length||row.length){row.push(cur);rows.push(row)}
 if(!rows.length)return[];
 const head=rows[0].map(h=>h.trim().toLowerCase());
@@ -129,10 +132,15 @@ $('csv').onclick=()=>{const h=AK?{'x-admin-key':AK}:{};fetch('/api/admin/export.
 $('logbtn').onclick=async()=>{const l=await api('/admin/log');$('logbox').innerHTML='<ul class="sm">'+l.map(x=>`<li>${x.at.slice(0,16).replace('T',' ')} — ${x.action}: ${x.detail||''}</li>`).join('')+'</ul>'};
 document.querySelectorAll('[data-c]').forEach(b=>b.onclick=async()=>{try{await api('/admin/matches/'+b.dataset.c,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({cancelled:!!+b.dataset.v})});await load()}catch(e){alert(e.msg)}});
 document.querySelectorAll('[data-r]').forEach(s=>s.onchange=async()=>{try{await api('/admin/matches/'+s.dataset.r,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({result:+s.value})});await load()}catch(e){alert(e.msg)}});
+function normDate(s){if(!s)return s;s=s.trim();if(/^\d{4}-\d{2}-\d{2}/.test(s))return s;
+const m=s.match(/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+if(m){const[,mo,da,yr,hh,mi,ss]=m;return`${yr}-${mo.padStart(2,'0')}-${da.padStart(2,'0')} ${hh.padStart(2,'0')}:${mi}:${ss||'00'}`}
+return s}
 $('impBtn').onclick=async()=>{const f=$('impFile').files[0],st=$('impStatus');if(!f){st.textContent='Əvvəlcə fayl seçin';return}
 const text=await f.text();let rows;try{rows=parseCSV(text)}catch(e){st.textContent='CSV oxunmadı: '+e.message;return}
 if(!rows.length){st.textContent='Fayl boşdur və ya sütunlar tanınmadı';return}
 const need=['w1','w2','l1','l2','result'];if(!need.every(k=>k in rows[0])){st.textContent='Sütun adları uyğun deyil. Lazımdır: w1,w2,l1,l2,result';return}
+rows.forEach(r=>{if(r.played_at)r.played_at=normDate(r.played_at)});
 const CH=150;let done=0,created=new Set();
 for(let i=0;i<rows.length;i+=CH){const chunk=rows.slice(i,i+CH);st.textContent=`Göndərilir: ${i+1}–${Math.min(i+CH,rows.length)} / ${rows.length}...`;
 try{const r=await api('/admin/import',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({rows:chunk})});done+=r.inserted;r.created.forEach(n=>created.add(n))}
@@ -143,4 +151,4 @@ $('lb').addEventListener('click',e=>{const d=e.target.dataset;if(d.k){sk=d.k;ren
 $('pf').addEventListener('change',e=>{if(e.target.id=='ps'){PROF=+e.target.value;render()}});
 $('chips').addEventListener('click',e=>{const k=e.target.dataset.c;if(k){const kk=+k;on.has(kk)?on.delete(kk):on.add(kk);render()}});
 boot();
-</script></body></html>
+</script></body>
