@@ -30,7 +30,7 @@ svg{width:100%;height:auto}
 <section class="card"><h2>Oyunçu profili</h2><div id="pf"></div></section>
 <section class="card"><h2>MVP</h2><div id="mv"></div></section>
 <section class="card"><h2>Xalın dəyişməsi</h2><div id="chips"></div><svg id="ch" viewBox="0 0 640 260"></svg></section>
-<section class="card"><h2>Cüt uyğunluğu: birgə qələbə % (≥3 oyun)</h2><div class="sc"><table id="hm"></table></div></section>
+<section class="card"><h2>Cüt uyğunluğu: birgə qələbə % (≥2 oyun)</h2><div class="sc"><table id="hm"></table></div></section>
 <section class="card"><h2>Son oyunlar</h2><div class="sc" id="recent"></div></section>
 <section class="card"><h2>Admin paneli</h2><div id="adm"></div></section>
 </div>
@@ -86,7 +86,7 @@ let s=`<line x1="30" x2="630" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--bd)"/><tex
 vis.forEach(k=>{s+=`<polyline fill="none" stroke-width="2" stroke="${col(k)}" points="${cum[k].map((v,i)=>X(i)+','+Y(v)).join(' ')}"/>`});$('ch').innerHTML=s;
 $('chips').innerHTML=activePlayers().map(p=>`<button class="chip ${on.has(p.id)?'on':''}" data-c="${p.id}" style="--c:${col(p.id)}">${p.name}</button>`).join('');
 const PR=pairs(A),ap=activePlayers();
-$('hm').innerHTML='<tr><th></th>'+ap.map(p=>`<th>${p.name.slice(0,3)}</th>`).join('')+'</tr>'+ap.map(a=>`<tr><th>${a.name}</th>`+ap.map(c=>{if(a.id==c.id)return'<td></td>';const u=PR[[a.id,c.id].sort((x,y)=>x-y).join(',')];if(!u||u.g<3)return'<td class="mut">·</td>';const p=u.w/u.g*100;return`<td title="${u.w}/${u.g}" style="background:color-mix(in srgb,${p>=50?'var(--ac)':'var(--bad)'} ${Math.round(Math.abs(p-50)*1.6)}%,transparent)">${Math.round(p)}</td>`}).join('')+'</tr>').join('');
+$('hm').innerHTML='<tr><th></th>'+ap.map(p=>`<th>${p.name.slice(0,3)}</th>`).join('')+'</tr>'+ap.map(a=>`<tr><th>${a.name}</th>`+ap.map(c=>{if(a.id==c.id)return'<td></td>';const u=PR[[a.id,c.id].sort((x,y)=>x-y).join(',')];if(!u||u.g<2)return'<td class="mut">·</td>';const p=u.w/u.g*100;return`<td title="${u.w}/${u.g}" style="background:color-mix(in srgb,${p>=50?'var(--ac)':'var(--bad)'} ${Math.round(Math.abs(p-50)*1.6)}%,transparent)">${Math.round(p)}</td>`}).join('')+'</tr>').join('');
 $('recent').innerHTML='<table><tr><th>Tarix</th><th>Qalib</th><th>Məğlub</th><th>Xal</th><th>Şərh</th></tr>'+[...ST.matches].slice(-15).reverse().map(m=>`<tr class="${m.cancelled?'x':''}"><td>${m.played_at.slice(0,16).replace('T',' ')}</td><td>${pname(m.w1)}–${pname(m.w2)}</td><td>${pname(m.l1)}–${pname(m.l2)}</td><td>${m.result}</td><td class="cm">${m.comment||''}</td></tr>`).join('')+'</table>';
 frm();rAdm()}
 function allPairs(exclude=[]){const a=activePlayers().filter(p=>!exclude.includes(p.id)),r=[];for(let i=0;i<a.length;i++)for(let j=i+1;j<a.length;j++)r.push([a[i],a[j]]);return r}
@@ -105,18 +105,39 @@ const w=$('wp').value.split(',').map(Number),l=$('lp').value.split(',').map(Numb
 try{await api('/matches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({w,l,r,comment})});ssn='';await load()}
 catch(e){if(e.status===409){if(confirm('Bu oyun artıq son oyun kimi qeyd olunub. Yenə də əlavə edilsin?')){try{await api('/matches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({w,l,r,comment,confirm:true})});ssn='';await load()}catch(e2){$('ferr').textContent=e2.msg}}}
 else $('ferr').textContent=e.msg}}}
+function parseCSV(text){const rows=[];let row=[],cur='',q=false;text=text.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n');
+for(let i=0;i<text.length;i++){const c=text[i];
+if(q){if(c=='"'){if(text[i+1]=='"'){cur+='"';i++}else q=false}else cur+=c}
+else{if(c=='"')q=true;else if(c==','){row.push(cur);cur=''}else if(c=='\n'){row.push(cur);rows.push(row);row=[];cur=''}else cur+=c}}
+if(cur.length||row.length){row.push(cur);rows.push(row)}
+if(!rows.length)return[];
+const head=rows[0].map(h=>h.trim().toLowerCase());
+return rows.slice(1).filter(r=>r.some(c=>c.trim())).map(r=>{const o={};head.forEach((h,i)=>o[h]=(r[i]||'').trim());return o})}
 function rAdm(){if(ROLE!=='admin'){$('adm').innerHTML='<p class="mut sm">Yalnız admin görə bilər.</p>';return}
 $('adm').innerHTML=`<p><input id="npName" placeholder="Yeni oyunçu adı"><button id="npAdd">Əlavə et</button>
 &nbsp; <select id="dp">${activePlayers().map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select><button id="dpDel">Sil/arxivlə</button>
 &nbsp; <button id="csv">CSV yüklə</button> <button id="logbtn">Tarixçə</button></p>
 <div class="sc"><table>${[...ST.matches].slice(-25).reverse().map(m=>`<tr class="${m.cancelled?'x':''}"><td>${m.played_at.slice(0,16).replace('T',' ')}</td><td>${pname(m.w1)}–${pname(m.w2)}</td><td>${pname(m.l1)}–${pname(m.l2)}</td><td><select data-r="${m.id}"><option ${m.result==1?'selected':''}>1</option><option ${m.result==2?'selected':''}>2</option><option ${m.result==3?'selected':''}>3</option></select></td><td><button data-c="${m.id}" data-v="${m.cancelled?0:1}">${m.cancelled?'Bərpa':'Ləğv et'}</button></td></tr>`).join('')}</table></div>
-<div id="logbox"></div>`;
+<div id="logbox"></div>
+<h3 style="font-size:14px">Toplu idxal (CSV)</h3>
+<p class="mut sm">Sütunlar (baş sətirdə, kiçik hərflə): <b>w1,w2,l1,l2,result</b> məcburi, <b>played_at</b> (məs: 2026-01-05 10:00:00) və <b>comment</b> könüllü. w1/w2 = qalib cütü, l1/l2 = məğlub cütü, oyunçu adları mətn kimi.</p>
+<input type="file" id="impFile" accept=".csv,text/csv"> <button id="impBtn">İdxal et</button>
+<p id="impStatus" class="sm"></p>`;
 $('npAdd').onclick=async()=>{try{await api('/admin/players',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:$('npName').value})});await load()}catch(e){alert(e.msg)}};
 $('dpDel').onclick=async()=>{try{await api('/admin/players/'+$('dp').value,{method:'DELETE'});await load()}catch(e){alert(e.msg)}};
 $('csv').onclick=()=>{const h=AK?{'x-admin-key':AK}:{};fetch('/api/admin/export.csv',{headers:h}).then(r=>r.blob()).then(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='domino-oyunlar.csv';a.click()})};
 $('logbtn').onclick=async()=>{const l=await api('/admin/log');$('logbox').innerHTML='<ul class="sm">'+l.map(x=>`<li>${x.at.slice(0,16).replace('T',' ')} — ${x.action}: ${x.detail||''}</li>`).join('')+'</ul>'};
 document.querySelectorAll('[data-c]').forEach(b=>b.onclick=async()=>{try{await api('/admin/matches/'+b.dataset.c,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({cancelled:!!+b.dataset.v})});await load()}catch(e){alert(e.msg)}});
-document.querySelectorAll('[data-r]').forEach(s=>s.onchange=async()=>{try{await api('/admin/matches/'+s.dataset.r,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({result:+s.value})});await load()}catch(e){alert(e.msg)}})}
+document.querySelectorAll('[data-r]').forEach(s=>s.onchange=async()=>{try{await api('/admin/matches/'+s.dataset.r,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({result:+s.value})});await load()}catch(e){alert(e.msg)}});
+$('impBtn').onclick=async()=>{const f=$('impFile').files[0],st=$('impStatus');if(!f){st.textContent='Əvvəlcə fayl seçin';return}
+const text=await f.text();let rows;try{rows=parseCSV(text)}catch(e){st.textContent='CSV oxunmadı: '+e.message;return}
+if(!rows.length){st.textContent='Fayl boşdur və ya sütunlar tanınmadı';return}
+const need=['w1','w2','l1','l2','result'];if(!need.every(k=>k in rows[0])){st.textContent='Sütun adları uyğun deyil. Lazımdır: w1,w2,l1,l2,result';return}
+const CH=150;let done=0,created=new Set();
+for(let i=0;i<rows.length;i+=CH){const chunk=rows.slice(i,i+CH);st.textContent=`Göndərilir: ${i+1}–${Math.min(i+CH,rows.length)} / ${rows.length}...`;
+try{const r=await api('/admin/import',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({rows:chunk})});done+=r.inserted;r.created.forEach(n=>created.add(n))}
+catch(e){st.textContent=`Xəta (sətir ${i+1} ətrafında): ${e.msg}. ${done} oyun uğurla əlavə olundu, davam etmək üçün faylı düzəldib qalanını yenidən yükləyin.`;await load();return}}
+st.textContent=`Bitdi: ${done} oyun əlavə olundu, ${created.size} yeni oyunçu yaradıldı.`;await load()}}
 $('ss').addEventListener('change',e=>{ssn=e.target.value;render()});
 $('lb').addEventListener('click',e=>{const d=e.target.dataset;if(d.k){sk=d.k;render()}if(d.p){PROF=+d.p;render();$('pf').scrollIntoView({behavior:'smooth'})}});
 $('pf').addEventListener('change',e=>{if(e.target.id=='ps'){PROF=+e.target.value;render()}});
