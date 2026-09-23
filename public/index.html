@@ -108,10 +108,10 @@ else $('ferr').textContent=e.msg}}}
 function parseCSV(text){text=text.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n');
 const head0=text.split('\n')[0]||'';
 const delim=(head0.match(/\t/g)||[]).length>=(head0.match(/,/g)||[]).length&&(head0.match(/\t/g)||[]).length>=(head0.match(/;/g)||[]).length?'\t':((head0.match(/;/g)||[]).length>(head0.match(/,/g)||[]).length?';':',');
-const rows=[];let row=[],cur='',q=false;
+const rows=[];let row=[],cur='',q=false,atStart=true;
 for(let i=0;i<text.length;i++){const c=text[i];
 if(q){if(c=='"'){if(text[i+1]=='"'){cur+='"';i++}else q=false}else cur+=c}
-else{if(c=='"')q=true;else if(c==delim){row.push(cur);cur=''}else if(c=='\n'){row.push(cur);rows.push(row);row=[];cur=''}else cur+=c}}
+else{if(c=='"'&&atStart){q=true;atStart=false}else if(c==delim){row.push(cur);cur='';atStart=true}else if(c=='\n'){row.push(cur);rows.push(row);row=[];cur='';atStart=true}else{cur+=c;atStart=false}}}
 if(cur.length||row.length){row.push(cur);rows.push(row)}
 if(!rows.length)return[];
 const head=rows[0].map(h=>h.trim().toLowerCase());
@@ -140,6 +140,7 @@ $('impBtn').onclick=async()=>{const f=$('impFile').files[0],st=$('impStatus');if
 const text=await f.text();let rows;try{rows=parseCSV(text)}catch(e){st.textContent='CSV oxunmadı: '+e.message;return}
 if(!rows.length){st.textContent='Fayl boşdur və ya sütunlar tanınmadı';return}
 const need=['w1','w2','l1','l2','result'];if(!need.every(k=>k in rows[0])){st.textContent='Sütun adları uyğun deyil. Lazımdır: w1,w2,l1,l2,result';return}
+st.textContent=`Faylda ${rows.length} sətir tapıldı. Göndərilir...`;await new Promise(r=>setTimeout(r,50));
 rows.forEach(r=>{if(r.played_at)r.played_at=normDate(r.played_at)});
 const CH=150;let done=0,created=new Set();
 for(let i=0;i<rows.length;i+=CH){const chunk=rows.slice(i,i+CH);st.textContent=`Göndərilir: ${i+1}–${Math.min(i+CH,rows.length)} / ${rows.length}...`;
@@ -151,4 +152,4 @@ $('lb').addEventListener('click',e=>{const d=e.target.dataset;if(d.k){sk=d.k;ren
 $('pf').addEventListener('change',e=>{if(e.target.id=='ps'){PROF=+e.target.value;render()}});
 $('chips').addEventListener('click',e=>{const k=e.target.dataset.c;if(k){const kk=+k;on.has(kk)?on.delete(kk):on.add(kk);render()}});
 boot();
-</script></body>
+</script></body></html>
