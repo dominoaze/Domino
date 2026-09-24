@@ -37,7 +37,7 @@ svg{width:100%;height:auto}
 </main>
 <script>
 const $=id=>document.getElementById(id),AZ=['Yanvar','Fevral','Mart','Aprel','May','İyun','İyul','Avqust','Sentyabr','Oktyabr','Noyabr','Dekabr'];
-let GK=localStorage.getItem('gk')||'',AK=localStorage.getItem('ak')||'',ROLE=null,ST=null,sk='pts',on=null,ssn='',PROF=null;
+let GK=localStorage.getItem('gk')||'',AK=localStorage.getItem('ak')||'',ROLE=null,ST=null,sk='pts',on=null,ssn='',PROF=null,IMPMSG='';
 async function api(path,opts={}){const h={...(opts.headers||{})};if(AK)h['x-admin-key']=AK;else if(GK)h['x-group-key']=GK;
 const r=await fetch('/api'+path,{...opts,headers:h});const j=await r.json().catch(()=>({}));if(!r.ok){throw {status:r.status,msg:j.error||('xəta '+r.status)}}return j}
 function loginForm(){$('login').innerHTML=`<label>Qrup açarı<input id="gk" value="${GK}"></label><button id="gLogin">Giriş</button> <span class="mut sm">və ya</span> <label>Admin açarı<input id="ak" type="password" value="${AK}"></label><button id="aLogin">Admin girişi</button>`;
@@ -132,7 +132,7 @@ window.__sheetInfo=`vərəq: "${sheetName}" (${wb.SheetNames.length} vərəqdən
 return json.map(row=>{const o={};Object.keys(row).forEach(k=>{const kk=k.trim().toLowerCase();let v=row[k];o[kk]=(v instanceof Date)?v:String(v).trim()});return o})}
 window.__sheetInfo='';
 return parseCSV(await file.text())}
-  function rAdm(){if(ROLE!=='admin'){$('adm').innerHTML='<p class="mut sm">Yalnız admin görə bilər.</p>';return}
+function rAdm(){if(ROLE!=='admin'){$('adm').innerHTML='<p class="mut sm">Yalnız admin görə bilər.</p>';return}
 $('adm').innerHTML=`<p><input id="npName" placeholder="Yeni oyunçu adı"><button id="npAdd">Əlavə et</button>
 &nbsp; <select id="dp">${activePlayers().map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select><button id="dpDel">Sil/arxivlə</button>
 &nbsp; <button id="csv">CSV yüklə</button> <button id="logbtn">Tarixçə</button>
@@ -142,27 +142,29 @@ $('adm').innerHTML=`<p><input id="npName" placeholder="Yeni oyunçu adı"><butto
 <h3 style="font-size:14px">Toplu idxal (Excel .xlsx və ya CSV)</h3>
 <p class="mut sm">Sütunlar (baş sətirdə, kiçik hərflə): <b>w1,w2,l1,l2,result</b> məcburi, <b>played_at</b> (məs: 2026-01-05 10:00:00) və <b>comment</b> könüllü. w1/w2 = qalib cütü, l1/l2 = məğlub cütü, oyunçu adları mətn kimi.</p>
 <input type="file" id="impFile" accept=".xlsx,.xls,.csv"> <button id="impBtn">İdxal et</button>
-<p id="impStatus" class="sm"></p>`;
+<p id="impStatus" class="sm">${IMPMSG}</p>`;
 $('npAdd').onclick=async()=>{try{await api('/admin/players',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:$('npName').value})});await load()}catch(e){alert(e.msg)}};
 $('dpDel').onclick=async()=>{try{await api('/admin/players/'+$('dp').value,{method:'DELETE'});await load()}catch(e){alert(e.msg)}};
 $('csv').onclick=()=>{const h=AK?{'x-admin-key':AK}:{};fetch('/api/admin/export.csv',{headers:h}).then(r=>r.blob()).then(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='domino-oyunlar.csv';a.click()})};
 $('logbtn').onclick=async()=>{const l=await api('/admin/log');$('logbox').innerHTML='<ul class="sm">'+l.map(x=>`<li>${x.at.slice(0,16).replace('T',' ')} — ${x.action}: ${x.detail||''}</li>`).join('')+'</ul>'};
 document.querySelectorAll('[data-c]').forEach(b=>b.onclick=async()=>{try{await api('/admin/matches/'+b.dataset.c,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({cancelled:!!+b.dataset.v})});await load()}catch(e){alert(e.msg)}});
 document.querySelectorAll('[data-r]').forEach(s=>s.onchange=async()=>{try{await api('/admin/matches/'+s.dataset.r,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({result:+s.value})});await load()}catch(e){alert(e.msg)}});
-$('impBtn').onclick=async()=>{const f=$('impFile').files[0],st=$('impStatus');if(!f){st.textContent='Əvvəlcə fayl seçin';return}
-let rows;try{rows=await parseFile(f)}catch(e){st.textContent='Fayl oxunmadı: '+e.message;return}
-if(!rows.length){st.textContent='Fayl boşdur və ya sütunlar tanınmadı';return}
-const need=['w1','w2','l1','l2','result'];if(!need.every(k=>k in rows[0])){st.textContent='Sütun adları uyğun deyil. Lazımdır: w1,w2,l1,l2,result';return}
-st.textContent=`Faylda ${rows.length} sətir tapıldı${window.__sheetInfo?' ('+window.__sheetInfo+')':''}. Göndərilir...`;await new Promise(r=>setTimeout(r,50));
+$('impBtn').onclick=async()=>{const f=$('impFile').files[0],st=$('impStatus');const setMsg=(html)=>{IMPMSG=html;st.innerHTML=html};
+if(!f){setMsg('Əvvəlcə fayl seçin');return}
+let rows;try{rows=await parseFile(f)}catch(e){setMsg('Fayl oxunmadı: '+e.message);return}
+if(!rows.length){setMsg('Fayl boşdur və ya sütunlar tanınmadı');return}
+const need=['w1','w2','l1','l2','result'];if(!need.every(k=>k in rows[0])){setMsg('Sütun adları uyğun deyil. Lazımdır: w1,w2,l1,l2,result');return}
+setMsg(`Faylda ${rows.length} sətir tapıldı${window.__sheetInfo?' ('+window.__sheetInfo+')':''}. Göndərilir...`);await new Promise(r=>setTimeout(r,600));
 rows.forEach(r=>{if(r.played_at)r.played_at=normDate(r.played_at)});
-const CH=150;let done=0,created=new Set();
-for(let i=0;i<rows.length;i+=CH){const chunk=rows.slice(i,i+CH);st.textContent=`Göndərilir: ${i+1}–${Math.min(i+CH,rows.length)} / ${rows.length}...`;
-try{const r=await api('/admin/import',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({rows:chunk})});done+=r.inserted;r.created.forEach(n=>created.add(n))}
-catch(e){st.textContent=`Xəta (sətir ${i+1} ətrafında): ${e.msg}. ${done} oyun uğurla əlavə olundu, davam etmək üçün faylı düzəldib qalanını yenidən yükləyin.`;await load();return}}
-st.textContent=`Bitdi: ${done} oyun əlavə olundu, ${created.size} yeni oyunçu yaradıldı.`;await load()};
+const CH=150;let done=0,created=new Set(),skipped=[];
+for(let i=0;i<rows.length;i+=CH){const chunk=rows.slice(i,i+CH);setMsg(`Göndərilir: ${i+1}–${Math.min(i+CH,rows.length)} / ${rows.length}...`);
+try{const r=await api('/admin/import',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({rows:chunk})});done+=r.inserted;r.created.forEach(n=>created.add(n));(r.skipped||[]).forEach(x=>skipped.push({row:i+x.row,reason:x.reason}))}
+catch(e){setMsg(`Xəta (sətir ${i+1} ətrafında): ${e.msg}. ${done} oyun uğurla əlavə olundu.<br>Davam etmək üçün faylı düzəldib qalanını yenidən yükləyin.`);await load();return}}
+const skTxt=skipped.length?`<br><b>${skipped.length} sətir keçildi:</b><br>`+skipped.slice(0,30).map(x=>`sətir ${x.row}: ${x.reason}`).join('<br>')+(skipped.length>30?`<br>... və daha ${skipped.length-30} sətir`:''):'';
+setMsg(`Bitdi: ${done} oyun əlavə olundu, ${created.size} yeni oyunçu yaradıldı.${skTxt}`);await load()};
 $('resetBtn').onclick=async()=>{const w=prompt('BÜTÜN oyunlar və oyunçular silinəcək, geri qaytarıla bilməz. Təsdiq üçün böyük hərflərlə RESET yazın:');
 if(w!=='RESET')return;
-try{await api('/admin/reset',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({confirm:'RESET'})});PROF=null;on=null;await load()}catch(e){alert(e.msg)}}}
+try{await api('/admin/reset',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({confirm:'RESET'})});PROF=null;on=null;IMPMSG='';await load()}catch(e){alert(e.msg)}}}
 $('ss').addEventListener('change',e=>{ssn=e.target.value;render()});
 $('lb').addEventListener('click',e=>{const d=e.target.dataset;if(d.k){sk=d.k;render()}if(d.p){PROF=+d.p;render();$('pf').scrollIntoView({behavior:'smooth'})}});
 $('pf').addEventListener('change',e=>{if(e.target.id=='ps'){PROF=+e.target.value;render()}});
