@@ -157,8 +157,37 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script></body></html>`;
 
+// Test üçün nümunə data (Mövqeyi təmin edən simulyasiya)
+const mockState = {
+  players: [
+    { id: 1, name: 'Orxan', archived: false },
+    { id: 2, name: 'Elçin', archived: false },
+    { id: 3, name: 'Anar', archived: false },
+    { id: 4, name: 'Rəşad', archived: false }
+  ],
+  matches: [
+    { id: 1, w1: 1, w2: 2, l1: 3, l2: 4, result: 2, played_at: '2026-09-01T12:00:00Z', cancelled: false, comment: 'Mövsümün ilk oyunu' }
+  ]
+};
+
 export default {
   async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+
+    // Backend API Routeları
+    if (url.pathname === '/api/whoami') {
+      return new Response(JSON.stringify({ role: 'admin' }), {
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    if (url.pathname === '/api/state') {
+      return new Response(JSON.stringify(mockState), {
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    // Əsas Səhifə (HTML)
     return new Response(htmlContent, {
       headers: {
         'content-type': 'text/html;charset=UTF-8',
