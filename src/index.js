@@ -138,54 +138,21 @@ async function importMatches(req, env) {
     fresh.forEach((p) => byName.set(p.name.toLowerCase(), p.id));
   }
 
-  // --- BURA ƏLAVƏ EDİLDİ: Matçların bazaya yazılması və cavabın qaytarılması ---
-  const matchStatements = rows.map((r) => {
-    const w1_id = byName.get(String(r.w1).trim().toLowerCase());
-    const w2_id = byName.get(String(r.w2).trim().toLowerCase());
-    const l1_id = byName.get(String(r.l1).trim().toLowerCase());
-    const l2_id = byName.get(String(r.l2).trim().toLowerCase());
-
-    return env.DB.prepare('INSERT INTO matches (w1_id, w2_id, l1_id, l2_id, result) VALUES (?, ?, ?, ?, ?)')
-      .bind(w1_id, w2_id, l1_id, l2_id, Number(r.result));
-  });
-
-  await env.DB.batch(matchStatements);
-
-  return J({
-    inserted: rows.length,
-    created: toCreate,
-    skipped
-  });
-}
-
-const stmts = rows.map((r) => {
-    const [w1, w2, l1, l2] = ['w1', 'w2', 'l1', 'l2'].map((k) => byName.get(String(r[k]).trim().toLowerCase()));
-    const comment = r.comment ? String(r.comment).slice(0, 300) : null;
-    if (r.played_at) return env.DB.prepare('INSERT INTO matches(w1,w2,l1,l2,result,created_by,comment,played_at) VALUES(?,?,?,?,?,?,?,?)').bind(w1, w2, l1, l2, Number(r.result), 'import', comment, String(r.played_at));
-    return env.DB.prepare('INSERT INTO matches(w1,w2,l1,l2,result,created_by,comment) VALUES(?,?,?,?,?,?,?)').bind(w1, w2, l1, l2, Number(r.result), 'import', comment);
-  });
-  await env.DB.batch(stmts);
-  await log(env, 'admin', 'toplu idxal', `${rows.length} oyun əlavə edildi, ${skipped.length} sətir keçildi, ${toCreate.length} yeni oyunçu: ${toCreate.join(', ') || '—'}`);
-  return J({ inserted: rows.length, created: toCreate, skipped });
-}
-
-const { results: existing } = await env.DB.prepare('SELECT id,name FROM players').all();
-  const byName = new Map(existing.map((p) => [p.name.toLowerCase(), p.id]));
-  const toCreate = [...new Set(rows.flatMap((r) => [r.w1, r.w2, r.l1, r.l2].map((x) => String(x).trim())))].filter((n) => !byName.has(n.toLowerCase()));
-  if (toCreate.length) {
-    await env.DB.batch(toCreate.map((n) => env.DB.prepare('INSERT INTO players(name) VALUES(?)').bind(n)));
-    const { results: fresh } = await env.DB.prepare('SELECT id,name FROM players').all();
-    fresh.forEach((p) => byName.set(p.name.toLowerCase(), p.id));
-  }
   const stmts = rows.map((r) => {
     const [w1, w2, l1, l2] = ['w1', 'w2', 'l1', 'l2'].map((k) => byName.get(String(r[k]).trim().toLowerCase()));
     const comment = r.comment ? String(r.comment).slice(0, 300) : null;
-    if (r.played_at) return env.DB.prepare('INSERT INTO matches(w1,w2,l1,l2,result,created_by,comment,played_at) VALUES(?,?,?,?,?,?,?,?)').bind(w1, w2, l1, l2, Number(r.result), 'import', comment, String(r.played_at));
-    return env.DB.prepare('INSERT INTO matches(w1,w2,l1,l2,result,created_by,comment) VALUES(?,?,?,?,?,?,?)').bind(w1, w2, l1, l2, Number(r.result), 'import', comment);
+    if (r.played_at) {
+      return env.DB.prepare('INSERT INTO matches(w1,w2,l1,l2,result,created_by,comment,played_at) VALUES(?,?,?,?,?,?,?,?)')
+        .bind(w1, w2, l1, l2, Number(r.result), 'import', comment, String(r.played_at));
+    }
+    return env.DB.prepare('INSERT INTO matches(w1,w2,l1,l2,result,created_by,comment) VALUES(?,?,?,?,?,?,?)')
+      .bind(w1, w2, l1, l2, Number(r.result), 'import', comment);
   });
+
   await env.DB.batch(stmts);
-  await log(env, 'admin', 'toplu idxal', `${rows.length} oyun əlavə edildi, ${toCreate.length} yeni oyunçu: ${toCreate.join(', ') || '—'}`);
-  return J({ inserted: rows.length, created: toCreate });
+  await log(env, 'admin', 'toplu idxal', `${rows.length} oyun əlavə edildi, ${skipped.length} sətir keçildi, ${toCreate.length} yeni oyunçu: ${toCreate.join(', ') || '—'}`);
+  
+  return J({ inserted: rows.length, created: toCreate, skipped });
 }
 
 async function resetAll(req, env) {
