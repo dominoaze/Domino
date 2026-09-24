@@ -96,7 +96,7 @@ const wSel=(wv?wv.split(',').map(Number):[W[0][0].id,W[0][1].id]),L=allPairs(wSe
 $('fm').innerHTML=`<label>Qalib cütü<select id="wp">${W.map(p=>pOpt(p,wv)).join('')}</select></label>
 <label>Uduzan cütü<select id="lp">${L.length?L.map(p=>pOpt(p,lv)).join(''):'<option value="">— fərqli qalib cütü seçin —</option>'}</select></label>
 <label>Nəticə<select id="r"><option>1</option><option>2</option><option>3</option></select></label>
-<label style="flex:1 1 200px">Şərh (könüllü)<textarea id="cm" placeholder="məs: Adil son əlde reş açdı" maxlength="300">${cmv}</textarea></label>
+<label style="flex:1 1 200px">Şərh (könüllü)<textarea id="cm" placeholder="məs: Adil tək başına vuruşdu" maxlength="300">${cmv}</textarea></label>
 <button id="add">Əlavə et</button>`;
 $('wp').onchange=()=>frm();
 $('add').onclick=async()=>{$('ferr').textContent='';
