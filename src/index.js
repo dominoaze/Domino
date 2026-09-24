@@ -103,15 +103,36 @@ async function exportCsv(env) {
 async function importMatches(req, env) {
   const b = await req.json().catch(() => null);
   if (!b || !Array.isArray(b.rows) || !b.rows.length) return J({ error: 'rows massivi lazımdır' }, 400);
-  const rows = b.rows;
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
-    if (![1, 2, 3].includes(Number(r.result))) return J({ error: `sətir ${i + 1}: nəticə 1, 2 və ya 3 olmalıdır` }, 400);
+  const all = b.rows;
+  const rows = [], skipped = [];
+  all.forEach((r, i) => {
+    if (![1, 2, 3].includes(Number(r.result))) { skipped.push({ row: i + 1, reason: 'nəticə 1, 2 və ya 3 olmalıdır' }); return; }
     const names = ['w1', 'w2', 'l1', 'l2'].map((k) => String(r[k] || '').trim());
-    if (names.some((n) => !n)) return J({ error: `sətir ${i + 1}: oyunçu adı boşdur` }, 400);
-    if (new Set(names.map((n) => n.toLowerCase())).size !== 4) return J({ error: `sətir ${i + 1}: 4 fərqli oyunçu adı olmalıdır` }, 400);
-  }
+    if (names.some((n) => !n)) { skipped.push({ row: i + 1, reason: 'oyunçu adı boşdur' }); return; }
+    if (new Set(names.map((n) => n.toLowerCase())).size !== 4) { skipped.push({ row: i + 1, reason: '4 fərqli oyunçu adı olmalıdır (təkrarlanan ad var)' }); return; }
+    rows.push(r);
+  });
+  if (!rows.length) return J({ inserted: 0, created: [], skipped });
   const { results: existing } = await env.DB.prepare('SELECT id,name FROM players').all();
+  const byName = new Map(existing.map((p) => [p.name.toLowerCase(), p.id]));
+  const toCreate = [...new Set(rows.flatMap((r) => [r.w1, r.w2, r.l1, r.l2].map((x) => String(x).trim())))].filter((n) => !byName.has(n.toLowerCase()));
+  if (toCreate.length) {
+    await env.DB.batch(toCreate.map((n) => env.DB.prepare('INSERT INTO players(name) VALUES(?)').bind(n)));
+    const { results: fresh } = await env.DB.prepare('SELECT id,name FROM players').all();
+    fresh.forEach((p) => byName.set(p.name.toLowerCase(), p.id));
+  }
+  const stmts = rows.map((r) => {
+    const [w1, w2, l1, l2] = ['w1', 'w2', 'l1', 'l2'].map((k) => byName.get(String(r[k]).trim().toLowerCase()));
+    const comment = r.comment ? String(r.comment).slice(0, 300) : null;
+    if (r.played_at) return env.DB.prepare('INSERT INTO matches(w1,w2,l1,l2,result,created_by,comment,played_at) VALUES(?,?,?,?,?,?,?,?)').bind(w1, w2, l1, l2, Number(r.result), 'import', comment, String(r.played_at));
+    return env.DB.prepare('INSERT INTO matches(w1,w2,l1,l2,result,created_by,comment) VALUES(?,?,?,?,?,?,?)').bind(w1, w2, l1, l2, Number(r.result), 'import', comment);
+  });
+  await env.DB.batch(stmts);
+  await log(env, 'admin', 'toplu idxal', `${rows.length} oyun əlavə edildi, ${skipped.length} sətir keçildi, ${toCreate.length} yeni oyunçu: ${toCreate.join(', ') || '—'}`);
+  return J({ inserted: rows.length, created: toCreate, skipped });
+}
+
+const { results: existing } = await env.DB.prepare('SELECT id,name FROM players').all();
   const byName = new Map(existing.map((p) => [p.name.toLowerCase(), p.id]));
   const toCreate = [...new Set(rows.flatMap((r) => [r.w1, r.w2, r.l1, r.l2].map((x) => String(x).trim())))].filter((n) => !byName.has(n.toLowerCase()));
   if (toCreate.length) {
