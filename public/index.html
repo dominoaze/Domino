@@ -19,7 +19,7 @@ button{cursor:pointer}#pAdd,#gLogin,#aLogin,#add{background:var(--ac);color:#fff
 .chip{border:1px solid var(--c);color:var(--c);background:none;border-radius:99px;padding:2px 10px;margin:2px;cursor:pointer;font:inherit;font-size:12px}.chip.on{background:var(--c);color:#fff}
 svg{width:100%;height:auto}
 .cm{font-size:12px;color:var(--mut);font-style:italic}
-</style></head><body><main>
+</style><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script></head><body><main>
 <h1>🎲 Domino statistika</h1>
 <section class="card" id="loginBox"><h2>Giriş</h2><div id="login"></div><p id="err" class="sm"></p></section>
 <div id="app" hidden>
@@ -119,12 +119,13 @@ return rows.slice(1).filter(r=>r.some(c=>c.trim())).map(r=>{const o={};head.forE
 function rAdm(){if(ROLE!=='admin'){$('adm').innerHTML='<p class="mut sm">Yalnız admin görə bilər.</p>';return}
 $('adm').innerHTML=`<p><input id="npName" placeholder="Yeni oyunçu adı"><button id="npAdd">Əlavə et</button>
 &nbsp; <select id="dp">${activePlayers().map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select><button id="dpDel">Sil/arxivlə</button>
-&nbsp; <button id="csv">CSV yüklə</button> <button id="logbtn">Tarixçə</button></p>
+&nbsp; <button id="csv">CSV yüklə</button> <button id="logbtn">Tarixçə</button>
+&nbsp; <button id="resetBtn" style="border-color:var(--bad);color:var(--bad)">⚠ Hamısını sıfırla</button></p>
 <div class="sc"><table>${[...ST.matches].slice(-25).reverse().map(m=>`<tr class="${m.cancelled?'x':''}"><td>${m.played_at.slice(0,16).replace('T',' ')}</td><td>${pname(m.w1)}–${pname(m.w2)}</td><td>${pname(m.l1)}–${pname(m.l2)}</td><td><select data-r="${m.id}"><option ${m.result==1?'selected':''}>1</option><option ${m.result==2?'selected':''}>2</option><option ${m.result==3?'selected':''}>3</option></select></td><td><button data-c="${m.id}" data-v="${m.cancelled?0:1}">${m.cancelled?'Bərpa':'Ləğv et'}</button></td></tr>`).join('')}</table></div>
 <div id="logbox"></div>
-<h3 style="font-size:14px">Toplu idxal (CSV)</h3>
+<h3 style="font-size:14px">Toplu idxal (Excel .xlsx və ya CSV)</h3>
 <p class="mut sm">Sütunlar (baş sətirdə, kiçik hərflə): <b>w1,w2,l1,l2,result</b> məcburi, <b>played_at</b> (məs: 2026-01-05 10:00:00) və <b>comment</b> könüllü. w1/w2 = qalib cütü, l1/l2 = məğlub cütü, oyunçu adları mətn kimi.</p>
-<input type="file" id="impFile" accept=".csv,text/csv"> <button id="impBtn">İdxal et</button>
+<input type="file" id="impFile" accept=".xlsx,.xls,.csv"> <button id="impBtn">İdxal et</button>
 <p id="impStatus" class="sm"></p>`;
 $('npAdd').onclick=async()=>{try{await api('/admin/players',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:$('npName').value})});await load()}catch(e){alert(e.msg)}};
 $('dpDel').onclick=async()=>{try{await api('/admin/players/'+$('dp').value,{method:'DELETE'});await load()}catch(e){alert(e.msg)}};
@@ -132,12 +133,21 @@ $('csv').onclick=()=>{const h=AK?{'x-admin-key':AK}:{};fetch('/api/admin/export.
 $('logbtn').onclick=async()=>{const l=await api('/admin/log');$('logbox').innerHTML='<ul class="sm">'+l.map(x=>`<li>${x.at.slice(0,16).replace('T',' ')} — ${x.action}: ${x.detail||''}</li>`).join('')+'</ul>'};
 document.querySelectorAll('[data-c]').forEach(b=>b.onclick=async()=>{try{await api('/admin/matches/'+b.dataset.c,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({cancelled:!!+b.dataset.v})});await load()}catch(e){alert(e.msg)}});
 document.querySelectorAll('[data-r]').forEach(s=>s.onchange=async()=>{try{await api('/admin/matches/'+s.dataset.r,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({result:+s.value})});await load()}catch(e){alert(e.msg)}});
-function normDate(s){if(!s)return s;s=s.trim();if(/^\d{4}-\d{2}-\d{2}/.test(s))return s;
+function normDate(s){if(!s)return s;if(s instanceof Date){const p=n=>String(n).padStart(2,'0');return`${s.getFullYear()}-${p(s.getMonth()+1)}-${p(s.getDate())} ${p(s.getHours())}:${p(s.getMinutes())}:${p(s.getSeconds())}`}
+s=String(s).trim();if(/^\d{4}-\d{2}-\d{2}/.test(s))return s;
 const m=s.match(/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
 if(m){const[,mo,da,yr,hh,mi,ss]=m;return`${yr}-${mo.padStart(2,'0')}-${da.padStart(2,'0')} ${hh.padStart(2,'0')}:${mi}:${ss||'00'}`}
 return s}
+async function parseFile(file){const name=file.name.toLowerCase();
+if(name.endsWith('.xlsx')||name.endsWith('.xls')){
+const buf=await file.arrayBuffer();
+const wb=XLSX.read(buf,{type:'array',cellDates:true});
+const sheet=wb.Sheets[wb.SheetNames[0]];
+const json=XLSX.utils.sheet_to_json(sheet,{defval:''});
+return json.map(row=>{const o={};Object.keys(row).forEach(k=>{const kk=k.trim().toLowerCase();let v=row[k];o[kk]=(v instanceof Date)?v:String(v).trim()});return o})}
+return parseCSV(await file.text())}
 $('impBtn').onclick=async()=>{const f=$('impFile').files[0],st=$('impStatus');if(!f){st.textContent='Əvvəlcə fayl seçin';return}
-const text=await f.text();let rows;try{rows=parseCSV(text)}catch(e){st.textContent='CSV oxunmadı: '+e.message;return}
+let rows;try{rows=await parseFile(f)}catch(e){st.textContent='Fayl oxunmadı: '+e.message;return}
 if(!rows.length){st.textContent='Fayl boşdur və ya sütunlar tanınmadı';return}
 const need=['w1','w2','l1','l2','result'];if(!need.every(k=>k in rows[0])){st.textContent='Sütun adları uyğun deyil. Lazımdır: w1,w2,l1,l2,result';return}
 st.textContent=`Faylda ${rows.length} sətir tapıldı. Göndərilir...`;await new Promise(r=>setTimeout(r,50));
@@ -147,6 +157,9 @@ for(let i=0;i<rows.length;i+=CH){const chunk=rows.slice(i,i+CH);st.textContent=`
 try{const r=await api('/admin/import',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({rows:chunk})});done+=r.inserted;r.created.forEach(n=>created.add(n))}
 catch(e){st.textContent=`Xəta (sətir ${i+1} ətrafında): ${e.msg}. ${done} oyun uğurla əlavə olundu, davam etmək üçün faylı düzəldib qalanını yenidən yükləyin.`;await load();return}}
 st.textContent=`Bitdi: ${done} oyun əlavə olundu, ${created.size} yeni oyunçu yaradıldı.`;await load()}}
+$('resetBtn').onclick=async()=>{const w=prompt('BÜTÜN oyunlar və oyunçular silinəcək, geri qaytarıla bilməz. Təsdiq üçün böyük hərflərlə RESET yazın:');
+if(w!=='RESET')return;
+try{await api('/admin/reset',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({confirm:'RESET'})});PROF=null;on=null;await load()}catch(e){alert(e.msg)}}
 $('ss').addEventListener('change',e=>{ssn=e.target.value;render()});
 $('lb').addEventListener('click',e=>{const d=e.target.dataset;if(d.k){sk=d.k;render()}if(d.p){PROF=+d.p;render();$('pf').scrollIntoView({behavior:'smooth'})}});
 $('pf').addEventListener('change',e=>{if(e.target.id=='ps'){PROF=+e.target.value;render()}});
