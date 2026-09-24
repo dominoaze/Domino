@@ -130,6 +130,18 @@ async function importMatches(req, env) {
   return J({ inserted: rows.length, created: toCreate });
 }
 
+async function resetAll(req, env) {
+  const b = await req.json().catch(() => ({}));
+  if (b.confirm !== 'RESET') return J({ error: 'təsdiq sözü yanlışdır' }, 400);
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM matches'),
+    env.DB.prepare('DELETE FROM players'),
+    env.DB.prepare('DELETE FROM audit_log'),
+  ]);
+  await log(env, 'admin', 'hamısı sıfırlandı', 'bütün oyunçular və oyunlar silindi');
+  return J({ ok: true });
+}
+
 async function route(req, env) {
   const { pathname: p } = new URL(req.url), m = req.method;
   if (p === '/api/debug') return J({ hasGroup: !!env.GROUP_KEY, hasAdmin: !!env.ADMIN_KEY, groupLen: (env.GROUP_KEY || '').length, adminLen: (env.ADMIN_KEY || '').length });
@@ -149,6 +161,7 @@ async function route(req, env) {
     let x;
     if (p === '/api/admin/players' && m === 'POST') return addPlayer(req, env);
     if (p === '/api/admin/import' && m === 'POST') return importMatches(req, env);
+    if (p === '/api/admin/reset' && m === 'POST') return resetAll(req, env);
     if ((x = p.match(/^\/api\/admin\/players\/(\d+)$/)) && m === 'DELETE') return removePlayer(env, +x[1]);
     if ((x = p.match(/^\/api\/admin\/matches\/(\d+)$/)) && m === 'PATCH') return patchMatch(req, env, +x[1]);
     if (p === '/api/admin/log' && m === 'GET') return J((await env.DB.prepare('SELECT * FROM audit_log ORDER BY id DESC LIMIT 100').all()).results);
