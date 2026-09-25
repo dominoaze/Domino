@@ -196,7 +196,7 @@ async function characterize(req, env) {
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 150, messages: [{ role: 'user', content: aiPrompt(b.facts) }] }),
+    body: JSON.stringify({ model: 'claude-3-5-haiku-20241022', max_tokens: 150, messages: [{ role: 'user', content: aiPrompt(b.facts) }] }),
   });
   if (!resp.ok) return J({ error: 'AI xətası: ' + (await resp.text()).slice(0, 200) }, 502);
   const data = await resp.json();
@@ -211,8 +211,14 @@ async function characterize(req, env) {
 async function route(req, env) {
   const { pathname: p } = new URL(req.url), m = req.method;
   if (p === '/api/debug') return J({ hasGroup: !!env.GROUP_KEY, hasAdmin: !!env.ADMIN_KEY, groupLen: (env.GROUP_KEY || '').length, adminLen: (env.ADMIN_KEY || '').length });
+  
+  // AÇARSIZ İŞLƏYƏ BİLƏN ROUTE (Rola baxılmadan keçir)
+  if (p === '/api/characterize' && m === 'POST') return characterize(req, env);
+
+  // GİRİŞ AÇARLARI YOXLAMASI
   const role = await roleOf(req, env);
   if (!role) return J({ error: 'giriş açarı yanlışdır' }, 401);
+
   if (p === '/api/whoami' && m === 'GET') return J({ role });
   if (p === '/api/state' && m === 'GET') {
     const [pl, ma] = await Promise.all([
@@ -222,7 +228,6 @@ async function route(req, env) {
     return J({ players: pl.results, matches: ma.results });
   }
   if (p === '/api/matches' && m === 'POST') return addMatch(req, env, role);
-  if (p === '/api/characterize' && m === 'POST') return characterize(req, env);
   if (p.startsWith('/api/admin/')) {
     if (role !== 'admin') return J({ error: 'yalnız admin' }, 403);
     let x;
