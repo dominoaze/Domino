@@ -243,7 +243,7 @@ async function insight(req, env) {
   const task = {
     trend: 'Oyunçunun son oyunlarını əvvəlki oyunları ilə müqayisə et. Rəqəmlərlə irəliləyiş və ya geriləməni göstər. Əvvəlki dövr üçün oyun yoxdursa müqayisə uydurma.',
     pairs: 'Verilən üç bölgünü müqayisə et. Hesablanmış tövsiyəni və onun əsasını qısa izah et. Az oyun olan cütlüklərə dair nəticəni qəti proqnoz kimi təqdim etmə.',
-    recap: 'Yeni oyunun qaliblərini, xalı, reytinq və seriya dəyişikliklərindən ən maraqlısını qısa yekunlaşdır.'
+    recap: 'Yeni oyunun qaliblərini, xalı, reytinq və seriya dəyişikliklərindən ən maraqlısını qısa yekunlaşdır. Eyni zamanda bu sözləri yumoristik yaz (məs: "Meyitdir ki lap", "Belə getsə dağıdacaq bu gün" və s.)'
   }[b.kind];
   let resp;
   try {
