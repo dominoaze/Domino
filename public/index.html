@@ -199,17 +199,20 @@ async function comparePairs(){
   catch(e){PAIRMSG=table+`<p><b>Tövsiyə: variant ${f.recommendedArrangement}.</b> AI izahı alınmadı: ${escHtml(e.msg||'şəbəkə xətası')}</p>`;$('pairResult').innerHTML=PAIRMSG}
   finally{$('pairBtn').disabled=false}
 }
-async function afterMatch(w,l,r){
+async function afterMatch(w,l,r,comment){
   const oldP=calc(ST.matches.filter(m=>!m.cancelled)),oldRank=Object.values(oldP).filter(q=>q.g).sort((a,b)=>b.pts-a.pts).map(q=>q.id);
-  ssn='';await load();
-  const newP=calc(actMatches()),newRank=Object.values(newP).filter(q=>q.g).sort((a,b)=>b.pts-a.pts).map(q=>q.id);
-  const f={winners:w.map(pname),losers:l.map(pname),score:r,
+  const newP=calc([...ST.matches.filter(m=>!m.cancelled),{w1:w[0],w2:w[1],l1:l[0],l2:l[1],result:r}]);
+  const newRank=Object.values(newP).filter(q=>q.g).sort((a,b)=>b.pts-a.pts).map(q=>q.id);
+  const f={winners:w.map(pname),losers:l.map(pname),score:r,comment:comment||'',
     players:[...w,...l].map(id=>({name:pname(id),pointsBefore:oldP[id]?.pts||0,pointsAfter:newP[id].pts,
       eloChange:newP[id].e-(oldP[id]?.e||1000),rankBefore:oldRank.includes(id)?oldRank.indexOf(id)+1:null,
       rankAfter:newRank.indexOf(id)+1,streakAfter:newP[id].s>0?`${newP[id].s} qələbə`:`${-newP[id].s} məğlubiyyət`}))};
-  $('recapBox').hidden=false;$('recapText').textContent='Oyun əlavə edildi. AI icmalı yazılır…';
-  try{$('recapText').textContent=await requestInsight('recap',f)}
-  catch(e){$('recapText').textContent=`${f.winners.join(' və ')} ${r} xalla qalib gəldi. AI icmalı alınmadı: ${e.msg||'şəbəkə xətası'}`}
+  $('recapBox').hidden=false;$('recapText').textContent=`${f.winners.join(' və ')} ${r} xalla qalib gəldi.${comment?' Şərh: '+comment+'.':''} AI icmalı yazılır…`;
+  const recap=requestInsight('recap',f).then(text=>({text}),error=>({error}));
+  ssn='';await load();
+  const result=await recap;
+  if(result.error)$('recapText').textContent=`${f.winners.join(' və ')} ${r} xalla qalib gəldi. AI icmalı alınmadı: ${result.error.msg||'şəbəkə xətası'}`;
+  else $('recapText').textContent=result.text;
 }
 $('trendBtn').onclick=showTrend;
 function allPairs(exclude=[]){const a=activePlayers().filter(p=>!exclude.includes(p.id)),r=[];for(let i=0;i<a.length;i++)for(let j=i+1;j<a.length;j++)r.push([a[i],a[j]]);return r}
@@ -225,8 +228,8 @@ $('wp').onchange=()=>frm();
 $('add').onclick=async()=>{$('ferr').textContent='';
 if(!$('lp').value){$('ferr').textContent='Uduzan cütü seçin';return}
 const w=$('wp').value.split(',').map(Number),l=$('lp').value.split(',').map(Number),r=+$('r').value,comment=$('cm').value.trim()||undefined;
-try{await api('/matches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({w,l,r,comment})});await afterMatch(w,l,r)}
-catch(e){if(e.status===409){if(confirm('Bu oyun artıq son oyun kimi qeyd olunub. Yenə də əlavə edilsin?')){try{await api('/matches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({w,l,r,comment,confirm:true})});await afterMatch(w,l,r)}catch(e2){$('ferr').textContent=e2.msg}}}
+try{await api('/matches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({w,l,r,comment})});await afterMatch(w,l,r,comment)}
+catch(e){if(e.status===409){if(confirm('Bu oyun artıq son oyun kimi qeyd olunub. Yenə də əlavə edilsin?')){try{await api('/matches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({w,l,r,comment,confirm:true})});await afterMatch(w,l,r,comment)}catch(e2){$('ferr').textContent=e2.msg}}}
 else $('ferr').textContent=e.msg}}}
 function parseCSV(text){text=text.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n');
 const head0=text.split('\n')[0]||'';
