@@ -94,9 +94,10 @@ $('pf').innerHTML=`<div class="pselect">${chips}</div>
 <div><div class="profile-name">${q.name}</div><div class="profile-rank">${rank?'🏅 #'+rank+' reytinqdə':''} · ${q.g} oyun</div></div>
 </div>`+
 (q.g?`<div class="gr">${box('🎯','Qələbə %',wr+'%',`<div class="winbar" style="--c:${c}"><i style="width:${wr}%"></i></div>`)}${box('⭐','Xal',(q.pts>0?'+':'')+q.pts)}${box('📈','Elo',q.e)}${box(q.s>0?'🔥':'❄️','Cari seriya',q.s>0?q.s+' Q':-q.s+' M')}${box('🏆','Ən uzun Q seriyası',q.ms)}${box('🧊','Ən uzun M seriyası',q.ls)}${box('💥','Böyük qələbə (2–3)',q.bw)}${box('🤝','Ən yaxşı partnyor',pc(f.pa))}${box('⚔️','Ən çətin partnyor',pc(f.pw))}${box('😬','Ən çətin rəqib',pc(f.nem))}${box('😎','Ən asan rəqib',pc(f.vic))}</div>
-<div class="charbox" style="--c:${c}">💬 <b>Xarakteristika:</b> ${chr(q,f)}</div>
+<div class="charbox" style="--c:${c}">💬 <b>Xarakteristika</b> <span id="charai" class="mut sm"></span><br><span id="chartext">${chr(q,f)}</span></div>
 <p class="mut sm" style="margin:6px 0 0">Partnyor/rəqib: ən azı 2 oyun.</p>`:'<p class="mut">Bu dövrdə oyunu yoxdur.</p>')}
 else $('pf').innerHTML='<p class="mut">Hələ oyunçu yoxdur.</p>';
+if(k0&&P[k0]&&P[k0].g)loadAiChar(k0,P[k0],profStats(k0,A));
 const t=(r,h)=>r.length?`<table><tr><th>${h}</th><th>MVP</th><th>Xal</th></tr>${r.map(([d,k,v])=>`<tr><td>${h=='Ay'?ml(d):d.slice(5,10)}</td><td>${pname(k)}</td><td>${v>0?'+':''}${v}</td></tr>`).join('')}</table>`:'<p class="mut sm">Məlumat yoxdur.</p>';
 $('mv').innerHTML=`<div class="two"><div class="sc"><b>Günün MVP-si</b>${t(mvp(A,m=>m.played_at.slice(0,10)).slice(0,10),'Gün')}</div><div class="sc"><b>Ayın MVP-si</b>${t(mvp(ST.matches.filter(m=>!m.cancelled),m=>mk(m.played_at)),'Ay')}</div></div>`;
 if(!on)on=new Set(L.slice(0,4).map(q=>q.id));
@@ -111,6 +112,18 @@ const PR=pairs(A),ap=activePlayers();
 $('hm').innerHTML='<tr><th></th>'+ap.map(p=>`<th>${p.name.slice(0,3)}</th>`).join('')+'</tr>'+ap.map(a=>`<tr><th>${a.name}</th>`+ap.map(c=>{if(a.id==c.id)return'<td></td>';const u=PR[[a.id,c.id].sort((x,y)=>x-y).join(',')];if(!u||u.g<2)return'<td class="mut">·</td>';const p=u.w/u.g*100;return`<td title="${u.w}/${u.g}" style="background:color-mix(in srgb,${p>=50?'var(--ac)':'var(--bad)'} ${Math.round(Math.abs(p-50)*1.6)}%,transparent)">${Math.round(p)}</td>`}).join('')+'</tr>').join('');
 $('recent').innerHTML='<table><tr><th>Tarix</th><th>Qalib</th><th>Məğlub</th><th>Xal</th><th>Şərh</th></tr>'+[...ST.matches].slice(-15).reverse().map(m=>`<tr class="${m.cancelled?'x':''}"><td>${m.played_at.slice(0,16).replace('T',' ')}</td><td>${pname(m.w1)}–${pname(m.w2)}</td><td>${pname(m.l1)}–${pname(m.l2)}</td><td>${m.result}</td><td class="cm">${m.comment||''}</td></tr>`).join('')+'</table>';
 frm();rAdm()}
+const AICACHE={};
+async function loadAiChar(pid,q,f){
+const key=pid+':'+q.g;
+if(AICACHE[key]){const el=$('chartext');if(el)el.textContent=AICACHE[key];const b=$('charai');if(b)b.textContent='🤖 AI';return}
+const facts={name:q.name,games:q.g,wins:q.w,losses:q.l,winRate:Math.round(q.w/q.g*100),pts:q.pts,elo:q.e,streak:(q.s>0?q.s+' qələbə':(-q.s)+' məğlubiyyət'),maxWinStreak:q.ms,maxLossStreak:q.ls,bigWins:q.bw,
+bestPartner:f.pa?`${pname(f.pa[0])} (${Math.round(f.pa[1].w/f.pa[1].g*100)}%)`:null,
+worstPartner:f.pw?`${pname(f.pw[0])} (${Math.round(f.pw[1].w/f.pw[1].g*100)}%)`:null,
+toughestOpponent:f.nem?`${pname(f.nem[0])} (${Math.round(f.nem[1].w/f.nem[1].g*100)}%)`:null,
+easiestOpponent:f.vic?`${pname(f.vic[0])} (${Math.round(f.vic[1].w/f.vic[1].g*100)}%)`:null};
+try{const r=await api('/characterize',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({playerId:pid,games:q.g,facts})});
+if(PROF!==pid)return;
+AICACHE[key]=r.text;const el=$('chartext');if(el)el.textContent=r.text;const b=$('charai');if(b)b.textContent='🤖 AI'}catch(e){}}
 function allPairs(exclude=[]){const a=activePlayers().filter(p=>!exclude.includes(p.id)),r=[];for(let i=0;i<a.length;i++)for(let j=i+1;j<a.length;j++)r.push([a[i],a[j]]);return r}
 function frm(){const wv=$('wp')?.value,lv=$('lp')?.value,cmv=$('cm')?.value||'',W=allPairs(),pOpt=([x,y],v)=>`<option value="${x.id},${y.id}" ${v&&v===`${x.id},${y.id}`?'selected':''}>${x.name}–${y.name}</option>`;
 if(!W.length){$('fm').innerHTML='<p class="mut sm">Oyuna başlamaq üçün ən azı 4 aktiv oyunçu lazımdır. Admin paneldən əlavə edin.</p>';return}
