@@ -31,13 +31,21 @@ svg{width:100%;height:auto}
 .winbar{height:6px;border-radius:99px;background:var(--bd);overflow:hidden;margin-top:5px}
 .winbar>i{display:block;height:100%;background:var(--c);border-radius:99px}
 .charbox{border-radius:10px;padding:11px 13px;border-left:4px solid var(--c);background:color-mix(in srgb,var(--c) 12%,var(--card));margin-top:2px}
+#recapBox{padding:16px;box-shadow:0 4px 16px rgba(0,0,0,.06)}
+#recapBox h2{margin-bottom:12px;font-size:16px}
+#recapText{display:grid;gap:10px}
+.recap-part{padding:12px 14px;border:1px solid var(--bd);border-left:5px solid var(--recap-color);border-radius:10px;background:color-mix(in srgb,var(--recap-color) 11%,var(--card))}
+.recap-part strong{display:block;color:var(--recap-color);font-size:13px;margin-bottom:5px}
+.recap-part p{margin:0;line-height:1.6;white-space:pre-line}
+.recap-winners{--recap-color:#15803d}.recap-losers{--recap-color:#1d4ed8}
+@media(prefers-color-scheme:dark){.recap-winners{--recap-color:#86efac}.recap-losers{--recap-color:#93c5fd}}
 </style><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script></head><body><main>
 <h1>🎲 Domino statistika</h1>
 <section class="card" id="loginBox"><h2>Giriş</h2><div id="login"></div><p id="err" class="sm"></p></section>
 <div id="app" hidden>
 <div class="row"><p class="mut sm" id="sub" style="margin:0"></p><label>Dövr<select id="ss"></select></label></div>
 <section class="card"><h2>Yeni oyun</h2><div id="fm"></div><p id="ferr" class="neg sm"></p></section>
-<section class="card" id="recapBox" hidden><h2>📰 Son oyunun icmalı</h2><p id="recapText"></p></section>
+<section class="card" id="recapBox" hidden><h2>📰 Son oyunun icmalı</h2><div id="recapText" aria-live="polite"></div></section>
 <section class="card"><h2>Reytinq (adına toxun: profil)</h2><div class="sc"><table id="lb"></table></div>
 <p class="mut sm" style="margin-bottom:0">Xal: nəticə (1/2/3) qalib cütün hər üzvünə +, məğlub cütün hər üzvünə −. Elo: hamı 1000-dən başlayır, güclü rəqibi məğlub etmək çox, zəifi məğlub etmək az xal verir.</p></section>
 <section class="card"><h2>Oyunçu profili</h2><div id="pf"></div></section>
@@ -199,6 +207,23 @@ async function comparePairs(){
   catch(e){PAIRMSG=table+`<p><b>Tövsiyə: variant ${f.recommendedArrangement}.</b> AI izahı alınmadı: ${escHtml(e.msg||'şəbəkə xətası')}</p>`;$('pairResult').innerHTML=PAIRMSG}
   finally{$('pairBtn').disabled=false}
 }
+function showRecap(winners,losers){
+  const box=$('recapText');box.replaceChildren();
+  for(const [label,body,kind] of [['Qaliblər',winners,'recap-winners'],['Məğlublar',losers,'recap-losers']]){
+    if(!body)continue;
+    const part=document.createElement('div'),title=document.createElement('strong'),p=document.createElement('p');
+    part.className='recap-part '+kind;title.textContent=label;p.textContent=body;
+    part.append(title,p);box.append(part);
+  }
+}
+function showAiRecap(text){
+  const clean=String(text||'').trim();
+  const paragraphs=clean.split(/\n\s*\n|\n/u).map(x=>x.trim()).filter(Boolean);
+  if(paragraphs.length>1){showRecap(paragraphs[0],paragraphs.slice(1).join(' '));return}
+  const cuts=[...clean.matchAll(/[.!?]\s+/gu)],last=cuts.at(-1);
+  if(last){const pos=last.index+1;showRecap(clean.slice(0,pos).trim(),clean.slice(pos).trim())}
+  else showRecap(clean,'');
+}
 async function afterMatch(w,l,r,comment){
   const oldP=calc(ST.matches.filter(m=>!m.cancelled)),oldRank=Object.values(oldP).filter(q=>q.g).sort((a,b)=>b.pts-a.pts).map(q=>q.id);
   const newP=calc([...ST.matches.filter(m=>!m.cancelled),{w1:w[0],w2:w[1],l1:l[0],l2:l[1],result:r}]);
@@ -207,12 +232,12 @@ async function afterMatch(w,l,r,comment){
     players:[...w,...l].map(id=>({name:pname(id),pointsBefore:oldP[id]?.pts||0,pointsAfter:newP[id].pts,
       eloChange:newP[id].e-(oldP[id]?.e||1000),rankBefore:oldRank.includes(id)?oldRank.indexOf(id)+1:null,
       rankAfter:newRank.indexOf(id)+1,streakAfter:newP[id].s>0?`${newP[id].s} qələbə`:`${-newP[id].s} məğlubiyyət`}))};
-  $('recapBox').hidden=false;$('recapText').textContent=`${f.winners.join(' və ')} ${r} xalla qalib gəldi.${comment?' Şərh: '+comment+'.':''} AI icmalı yazılır…`;
+  $('recapBox').hidden=false;showRecap(`${f.winners.join(' və ')} ${r} xalla qalib gəldi.${comment?' Şərh: '+comment+'.':''}`,'AI məğlublar barədə yazır…');
   const recap=requestInsight('recap',f).then(text=>({text}),error=>({error}));
   ssn='';await load();
   const result=await recap;
-  if(result.error)$('recapText').textContent=`${f.winners.join(' və ')} ${r} xalla qalib gəldi. AI icmalı alınmadı: ${result.error.msg||'şəbəkə xətası'}`;
-  else $('recapText').textContent=result.text;
+  if(result.error)showRecap(`${f.winners.join(' və ')} ${r} xalla qalib gəldi.`,`AI icmalı alınmadı: ${result.error.msg||'şəbəkə xətası'}`);
+  else showAiRecap(result.text);
 }
 $('trendBtn').onclick=showTrend;
 function allPairs(exclude=[]){const a=activePlayers().filter(p=>!exclude.includes(p.id)),r=[];for(let i=0;i<a.length;i++)for(let j=i+1;j<a.length;j++)r.push([a[i],a[j]]);return r}
