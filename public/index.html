@@ -225,6 +225,7 @@ function showAiRecap(text){
   else showRecap(clean,'');
 }
 async function afterMatch(w,l,r,comment){
+  if($('cm'))$('cm').value='';
   const oldP=calc(ST.matches.filter(m=>!m.cancelled)),oldRank=Object.values(oldP).filter(q=>q.g).sort((a,b)=>b.pts-a.pts).map(q=>q.id);
   const newP=calc([...ST.matches.filter(m=>!m.cancelled),{w1:w[0],w2:w[1],l1:l[0],l2:l[1],result:r}]);
   const newRank=Object.values(newP).filter(q=>q.g).sort((a,b)=>b.pts-a.pts).map(q=>q.id);
