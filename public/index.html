@@ -115,7 +115,11 @@ frm();rAdm()}
 const AICACHE={};
 async function loadAiChar(pid,q,f){
 const key=pid+':'+q.g;
-if(AICACHE[key]){const el=$('chartext');if(el)el.textContent=AICACHE[key];const b=$('charai');if(b)b.textContent='🤖 AI';return}
+if(AICACHE[key]){const el=$('chartext');if(el)el.textContent=AICACHE[key];const b=$('charai');if(b)b.textContent='🤖 AI'
+}catch(e){
+  const b=$('charai');
+  if(b && PROF===pid) b.textContent='AI xətası: '+(e.msg||e.message||e);
+}}
 const facts={name:q.name,games:q.g,wins:q.w,losses:q.l,winRate:Math.round(q.w/q.g*100),pts:q.pts,elo:q.e,streak:(q.s>0?q.s+' qələbə':(-q.s)+' məğlubiyyət'),maxWinStreak:q.ms,maxLossStreak:q.ls,bigWins:q.bw,
 bestPartner:f.pa?`${pname(f.pa[0])} (${Math.round(f.pa[1].w/f.pa[1].g*100)}%)`:null,
 worstPartner:f.pw?`${pname(f.pw[0])} (${Math.round(f.pw[1].w/f.pw[1].g*100)}%)`:null,
@@ -123,7 +127,11 @@ toughestOpponent:f.nem?`${pname(f.nem[0])} (${Math.round(f.nem[1].w/f.nem[1].g*1
 easiestOpponent:f.vic?`${pname(f.vic[0])} (${Math.round(f.vic[1].w/f.vic[1].g*100)}%)`:null};
 try{const r=await api('/characterize',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({playerId:pid,games:q.g,facts})});
 if(PROF!==pid)return;
-AICACHE[key]=r.text;const el=$('chartext');if(el)el.textContent=r.text;const b=$('charai');if(b)b.textContent='🤖 AI'}catch(e){}}
+AICACHE[key]=r.text;const el=$('chartext');if(el)el.textContent=r.text;const b=$('charai');if(b)b.textContent='🤖 AI'
+}catch(e){
+  const b=$('charai');
+  if(b && PROF===pid) b.textContent='AI xətası: '+(e.msg||e.message||e);
+}}
 function allPairs(exclude=[]){const a=activePlayers().filter(p=>!exclude.includes(p.id)),r=[];for(let i=0;i<a.length;i++)for(let j=i+1;j<a.length;j++)r.push([a[i],a[j]]);return r}
 function frm(){const wv=$('wp')?.value,lv=$('lp')?.value,cmv=$('cm')?.value||'',W=allPairs(),pOpt=([x,y],v)=>`<option value="${x.id},${y.id}" ${v&&v===`${x.id},${y.id}`?'selected':''}>${x.name}–${y.name}</option>`;
 if(!W.length){$('fm').innerHTML='<p class="mut sm">Oyuna başlamaq üçün ən azı 4 aktiv oyunçu lazımdır. Admin paneldən əlavə edin.</p>';return}
