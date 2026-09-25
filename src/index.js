@@ -316,3 +316,4 @@ export default {
     try { return await route(req, env); } catch (e) { return J({ error: 'server xətası', detail: String(e.message || e) }, 500); }
   },
 };
+
