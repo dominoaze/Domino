@@ -190,13 +190,13 @@ async function characterize(req, env) {
   const b = await req.json().catch(() => null);
   if (!b || !b.playerId || !b.facts) return J({ error: 'playerId və facts lazımdır' }, 400);
   const games = Number(b.games) || 0;
+  
   const cached = await env.DB.prepare('SELECT text, games FROM ai_cache WHERE player_id=?').bind(b.playerId).first();
   if (cached && cached.games === games) return J({ text: cached.text, cached: true });
 
-  // Yeni aldığınız API açarını aşağıdaki tırnakların içine yapıştırın:
   const apiKey = env.ANTHROPIC_API_KEY || "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";
 
-  if (!apiKey || apiKey.includes("BURAYA_YENI")) return J({ error: 'AI açarı qoşulmayıb' }, 501);
+  if (!apiKey || apiKey.includes("SİZİN_API")) return J({ error: 'AI açarı qoşulmayıb' }, 501);
 
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -205,19 +205,28 @@ async function characterize(req, env) {
       'x-api-key': apiKey, 
       'anthropic-version': '2023-06-01' 
     },
-    body: JSON.stringify({ model: 'claude-3-5-haiku-20241022', max_tokens: 150, messages: [{ role: 'user', content: aiPrompt(b.facts) }] }),
+    body: JSON.stringify({ 
+      model: 'claude-3-haiku-20240307', 
+      max_tokens: 150, 
+      messages: [{ role: 'user', content: aiPrompt(b.facts) }] 
+    }),
   });
 
-  if (!resp.ok) return J({ error: 'AI xətası: ' + (await resp.text()).slice(0, 200) }, 502);
+  if (!resp.ok) {
+    const errText = await resp.text();
+    return J({ error: 'AI xətası', status: resp.status, detail: errText }, 502);
+  }
+
   const data = await resp.json();
   const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text).join(' ').trim();
   if (!text) return J({ error: 'AI cavab vermədi' }, 502);
+
   await env.DB.prepare(
     "INSERT INTO ai_cache(player_id,games,text) VALUES(?,?,?) ON CONFLICT(player_id) DO UPDATE SET games=excluded.games, text=excluded.text, created_at=datetime('now')"
   ).bind(b.playerId, games, text).run();
+
   return J({ text, cached: false });
-}
-async function route(req, env) {
+}async function route(req, env) {
   const { pathname: p } = new URL(req.url), m = req.method;
   
   if (p === '/api/debug') return J({ 
