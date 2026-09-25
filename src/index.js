@@ -250,7 +250,7 @@ async function insight(req, env) {
   const task = {
     trend: 'Oyunçunun son oyunlarını əvvəlki oyunları ilə müqayisə et. Rəqəmlərlə irəliləyiş və ya geriləməni göstər. Əvvəlki dövr üçün oyun yoxdursa müqayisə uydurma.',
     pairs: 'Verilən üç bölgünü müqayisə et. Hesablanmış tövsiyəni və onun əsasını qısa izah et. Az oyun olan cütlüklərə dair nəticəni qəti proqnoz kimi təqdim etmə.',
-    recap: `Bu mətn yalnız “Son oyunun icmalı” bölməsi üçündür. Yaxın dostların domino qrupuna gündəlik Azərbaycan dilində yaz. İlk 1–2 cümlədə qalib cütü, nəticə və varsa maraqlı xal, reytinq və ya seriya dəyişikliyini dəqiq yaz. SON cümlədə bu oyunda uduzan ${insultTargets.length ? insultTargets.join(' və ') : 'heç kəsi'} ${insultTargets.length ? 'adları ilə çəkib onlara orta sərtlikdə, açıq söyüşlü, məzəli atmaca et'}. Söyüşü yumşaltma və ulduzlarla gizlətmə; “meyit”, “maxaraşvili”, "tupoy", "lom", "ördək", "qəhi", "stariy pederast" və ya “qandon” kimi gündəlik çox sərt olmayan ifadələrdən vəziyyətə uyğun istifadə et. Üslub bu dəfə ${tone} olsun; hazır şablon və köhnə nümunəni köçürmə. ${protectedLosers.length ? protectedLosers.join(' və ') + ' adlarına söyüş, atmaca və kinayə yönəltmə; onları yalnız fakt kimi neytral qeyd edə bilərsən.' : ''} Qalibləri söymə. Uydurma rəqəm və hadisə əlavə etmə. Türkiyə türkcəsindən və məna verməyən cümlələrdən yayın; adların şəkilçilərini düzgün yaz Həsən adlı oyunçu haqda söyüş yazma.`
+    recap: `Bu mətn yalnız “Son oyunun icmalı” bölməsi üçündür. Yaxın dostların domino qrupuna gündəlik Azərbaycan dilində yaz. İlk 1–2 cümlədə qalib cütü, nəticə və varsa maraqlı xal, Elo, reytinq və ya seriya dəyişikliyini dəqiq yaz. SON cümlədə bu oyunda uduzan ${insultTargets.length ? insultTargets.join(' və ') : 'heç kəsi'} ${insultTargets.length ? 'adları ilə çəkib hər birinə açıq, orta sərtlikdə dost atmacası et' : 'söymə; yalnız faktları yaz'}. Atmacada əsasən bu qrupun öz sözlərindən 1–2-ni yerində işlət: “meyit”, “Maxaraşvili”, “tupoy”, “lom”, “ördək”, “qəhi”, “qandon”, “vızqırt”. Eyni sözü və eyni cümləni hər dəfə təkrarlama; oyunun faktlarına uyğun, Azərbaycan dilində mənası aydın və müxtəlif zarafat qur. Üslub bu dəfə ${tone} olsun. ${protectedLosers.length ? protectedLosers.join(' və ') + ' adlarına söyüş, atmaca və kinayə yönəltmə; onları yalnız fakt kimi neytral qeyd edə bilərsən.' : ''} Qalibləri söymə. Həsən adlı oyunçunu söymə. Uydurma rəqəm və hadisə əlavə etmə. Türkiyə türkcəsindən və məna verməyən cümlələrdən yayın; adların şəkilçilərini düzgün yaz.`
   }[b.kind];
   let text = '', lastError = null;
   for (let attempt = 0; attempt < (b.kind === 'recap' && insultTargets.length ? 2 : 1); attempt++) {
@@ -284,22 +284,25 @@ async function insight(req, env) {
     const lastSentence = text.split(/(?<=[.!?])\s+/u).filter(Boolean).at(-1) || '';
     const targetsPresent = insultTargets.every(n => lastSentence.toLocaleLowerCase('az-AZ').includes(n.toLocaleLowerCase('az-AZ')));
     const protectedAbsent = protectedLosers.every(n => !lastSentence.toLocaleLowerCase('az-AZ').includes(n.toLocaleLowerCase('az-AZ')));
-    if (targetsPresent && protectedAbsent && /pox|sikdir|siktir|gicdıllaq/i.test(lastSentence)) return J({ text });
+    if (targetsPresent && protectedAbsent && /meyit|maxaraşvili|tupoy|lom|ördək|qəhi|qandon|vızqırt/iu.test(lastSentence)) return J({ text });
   }
   if (b.kind === 'recap' && text && insultTargets.length) {
     // Rare fallback if the model fails twice: preserve the factual summary and vary the closing line.
-    const clean = text.split(/(?<=[.!?])\s+/u).filter(s => !/pox|sikdir|siktir|gicdıllaq/i.test(s)).slice(0, 2).join(' ')
-      || `${b.facts.winners.join(' və ')} ${b.facts.score} xalla qalib gəldi.`;
+    const clean = `${b.facts.winners.join(' və ')} bu oyunda ${b.facts.score} xalla qalib gəldi.`;
     const names = insultTargets.join(' və '), plural = insultTargets.length > 1;
     const beginnings = [`Ay ${names},`, `${names},`];
     const endings = plural ? [
-      'sikdir, bu gün nə pox oyun çıxartdınız belə?',
-      'nə pox oynadınız, siktir, özünüzə gəlin!',
-      'oyunu lap poxa döndərdiniz, sikdirin gedin bir az məşq eləyin!'
+      'bu gün lap meyit kimi oynadınız, daşlar sizdən bezdi!',
+      'nə vızqırt oyun çıxartdınız belə, özünüzə gəlin!',
+      'tupoy ördək kimi qaldınız ortada, bu nə oyundur?',
+      'bu gün lom kimi oturdunuz, ay qandonlar!',
+      'Maxaraşvili də gəlsəydi, bu qəhi oyuna baxıb qaçardı!'
     ] : [
-      'sikdir, bu gün nə pox oyun çıxartdın belə?',
-      'nə pox oynadın, siktir, özünə gəl!',
-      'oyunu lap poxa döndərdin, sikdir get bir az məşq elə!'
+      'bu gün lap meyit kimi oynadın, daşlar səndən bezdi!',
+      'nə vızqırt oyun çıxartdın belə, özünə gəl!',
+      'tupoy ördək kimi qaldın ortada, bu nə oyundur?',
+      'bu gün lom kimi oturdun, ay qandon!',
+      'Maxaraşvili də gəlsəydi, bu qəhi oyuna baxıb qaçardı!'
     ];
     text = `${clean} ${beginnings[Math.floor(Math.random() * beginnings.length)]} ${endings[Math.floor(Math.random() * endings.length)]}`;
   }
@@ -311,8 +314,8 @@ async function route(req, env) {
   const { pathname: p } = new URL(req.url), m = req.method;
 
   if (p === '/api/version' && m === 'GET') return J({
-    version: 'domino-recap-v8',
-    recap: 'AI-generated insult with retry and guaranteed fallback',
+    version: 'domino-recap-v9',
+    recap: 'AI recap with group vocabulary, retry and varied fallback',
     hasanExcluded: true
   });
 
