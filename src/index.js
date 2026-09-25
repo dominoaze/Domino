@@ -192,12 +192,22 @@ async function characterize(req, env) {
   const games = Number(b.games) || 0;
   const cached = await env.DB.prepare('SELECT text, games FROM ai_cache WHERE player_id=?').bind(b.playerId).first();
   if (cached && cached.games === games) return J({ text: cached.text, cached: true });
-  if (!env.ANTHROPIC_API_KEY) return J({ error: 'AI açarı qoşulmayıb' }, 501);
+
+  // Yeni aldığınız API açarını aşağıdaki tırnakların içine yapıştırın:
+  const apiKey = env.ANTHROPIC_API_KEY || "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";
+
+  if (!apiKey || apiKey.includes("BURAYA_YENI")) return J({ error: 'AI açarı qoşulmayıb' }, 501);
+
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+    headers: { 
+      'content-type': 'application/json', 
+      'x-api-key': apiKey, 
+      'anthropic-version': '2023-06-01' 
+    },
     body: JSON.stringify({ model: 'claude-3-5-haiku-20241022', max_tokens: 150, messages: [{ role: 'user', content: aiPrompt(b.facts) }] }),
   });
+
   if (!resp.ok) return J({ error: 'AI xətası: ' + (await resp.text()).slice(0, 200) }, 502);
   const data = await resp.json();
   const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text).join(' ').trim();
@@ -207,7 +217,6 @@ async function characterize(req, env) {
   ).bind(b.playerId, games, text).run();
   return J({ text, cached: false });
 }
-
 async function route(req, env) {
   const { pathname: p } = new URL(req.url), m = req.method;
   
