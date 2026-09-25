@@ -186,6 +186,7 @@ Böyük (2-3 xallı) qələbə sayı: ${f.bigWins}
 Ən asan rəqib: ${f.easiestOpponent || 'yoxdur'}`;
 }
 
+
 async function characterize(req, env) {
   const b = await req.json().catch(() => null);
   if (!b || !b.playerId || !b.facts) return J({ error: 'playerId və facts lazımdır' }, 400);
@@ -197,50 +198,39 @@ async function characterize(req, env) {
   const apiKey = env.ANTHROPIC_API_KEY;
   if (!apiKey) return J({ error: 'AI açarı qoşulmayıb' }, 501);
 
-  // Anthropic-in aktiv modellərinin siyahısı
-  const testModels = [
-    'claude-3-haiku-20240307',
-    'claude-3-5-haiku-20241022',
-    'claude-3-5-sonnet-20241022',
-    'claude-3-sonnet-20240229'
-  ];
+  // Anthropic rəsmi API sorğusu
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 
+      'Accept': 'application/json',
+      'Content-Type': 'application/json', 
+      'x-api-key': apiKey.trim(), 
+      'anthropic-version': '2023-06-01' 
+    },
+    body: JSON.stringify({ 
+      model: 'claude-3-haiku-20240307', 
+      max_tokens: 150, 
+      messages: [{ role: 'user', content: aiPrompt(b.facts) }] 
+    }),
+  });
 
-  let errors = [];
-
-  for (const modelName of testModels) {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 
-        'content-type': 'application/json', 
-        'x-api-key': apiKey.trim(), 
-        'anthropic-version': '2023-06-01' 
-      },
-      body: JSON.stringify({ 
-        model: modelName, 
-        max_tokens: 150, 
-        messages: [{ role: 'user', content: aiPrompt(b.facts) }] 
-      }),
-    });
-
-    if (resp.ok) {
-      const data = await resp.json();
-      const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text).join(' ').trim();
-      if (text) {
-        await env.DB.prepare(
-          "INSERT INTO ai_cache(player_id,games,text) VALUES(?,?,?) ON CONFLICT(player_id) DO UPDATE SET games=excluded.games, text=excluded.text, created_at=datetime('now')"
-        ).bind(b.playerId, games, text).run();
-
-        return J({ text, cached: false, activeModel: modelName });
-      }
-    } else {
-      const errText = await resp.text();
-      errors.push({ model: modelName, status: resp.status, detail: errText });
-    }
+  if (!resp.ok) {
+    const errText = await resp.text();
+    return J({ error: 'AI xətası', status: resp.status, detail: errText }, 502);
   }
 
-  // Əgər heç biri tutmazsa, bütün modellərin cavabını qaytarır
-  return J({ error: 'AI xətası', testedErrors: errors }, 502);
-}async function route(req, env) {
+  const data = await resp.json();
+  const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text).join(' ').trim();
+  if (!text) return J({ error: 'AI cavab vermədi' }, 502);
+
+  await env.DB.prepare(
+    "INSERT INTO ai_cache(player_id,games,text) VALUES(?,?,?) ON CONFLICT(player_id) DO UPDATE SET games=excluded.games, text=excluded.text, created_at=datetime('now')"
+  ).bind(b.playerId, games, text).run();
+
+  return J({ text, cached: false });
+}
+
+async function route(req, env) {
   const { pathname: p } = new URL(req.url), m = req.method;
 
   if (p === '/api/debug') return J({ 
