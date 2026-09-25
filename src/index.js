@@ -269,7 +269,7 @@ async function insight(req, env) {
       },
       body: JSON.stringify({
         model: b.kind === 'recap' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001',
-        max_tokens: b.kind === 'recap' ? 200 : 220,
+        max_tokens: b.kind === 'recap' ? 450 : 220,
         messages: [{ role: 'user', content:
           `Azərbaycan dilində 2–3 qısa cümlə yaz. Yalnız aşağıdakı faktlara əsaslan. ` +
           `Heç bir rəqəm, səbəb, taktika və ya nəticə uydurma. ` + task +
@@ -296,8 +296,8 @@ async function route(req, env) {
   const { pathname: p } = new URL(req.url), m = req.method;
 
   if (p === '/api/version' && m === 'GET') return J({
-    version: 'domino-recap-v14',
-    recap: 'Winner facts and loser banter in separate paragraphs',
+    version: 'domino-recap-v15',
+    recap: 'Full-length winner facts and loser banter',
     hasanExcluded: true
   });
 
