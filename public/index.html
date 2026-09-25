@@ -37,9 +37,15 @@ svg{width:100%;height:auto}
 <div id="app" hidden>
 <div class="row"><p class="mut sm" id="sub" style="margin:0"></p><label>Dövr<select id="ss"></select></label></div>
 <section class="card"><h2>Yeni oyun</h2><div id="fm"></div><p id="ferr" class="neg sm"></p></section>
+<section class="card" id="recapBox" hidden><h2>📰 Son oyunun icmalı</h2><p id="recapText"></p></section>
 <section class="card"><h2>Reytinq (adına toxun: profil)</h2><div class="sc"><table id="lb"></table></div>
 <p class="mut sm" style="margin-bottom:0">Xal: nəticə (1/2/3) qalib cütün hər üzvünə +, məğlub cütün hər üzvünə −. Elo: hamı 1000-dən başlayır, güclü rəqibi məğlub etmək çox, zəifi məğlub etmək az xal verir.</p></section>
 <section class="card"><h2>Oyunçu profili</h2><div id="pf"></div></section>
+<section class="card"><h2>🤖 Oyun təhlili</h2>
+<button id="trendBtn">Seçilmiş oyunçunun son oyunları</button> <span id="trendStatus" class="mut sm"></span>
+<p id="trendText" class="sm"></p>
+<h2>Dörd oyunçu üçün cüt seçimi</h2><div id="pairControls" class="row"></div>
+<div id="pairResult" class="sm"></div></section>
 <section class="card"><h2>MVP</h2><div id="mv"></div></section>
 <section class="card"><h2>Xalın dəyişməsi</h2><div id="chips"></div><svg id="ch" viewBox="0 0 640 260"></svg></section>
 <section class="card"><h2>Cüt uyğunluğu: birgə qələbə % (≥2 oyun)</h2><div class="sc"><table id="hm"></table></div></section>
@@ -49,7 +55,7 @@ svg{width:100%;height:auto}
 </main>
 <script>
 const $=id=>document.getElementById(id),AZ=['Yanvar','Fevral','Mart','Aprel','May','İyun','İyul','Avqust','Sentyabr','Oktyabr','Noyabr','Dekabr'];
-let GK=localStorage.getItem('gk')||'',AK=localStorage.getItem('ak')||'',ROLE=null,ST=null,sk='pts',on=null,ssn='',PROF=null,IMPMSG='';
+let GK=localStorage.getItem('gk')||'',AK=localStorage.getItem('ak')||'',ROLE=null,ST=null,sk='pts',on=null,ssn='',PROF=null,IMPMSG='',TRENDMSG='',PAIRMSG='';
 async function api(path,opts={}){const h={...(opts.headers||{})};if(AK)h['x-admin-key']=AK;else if(GK)h['x-group-key']=GK;
 const r=await fetch('/api'+path,{...opts,headers:h});const j=await r.json().catch(()=>({}));if(!r.ok){throw {status:r.status,msg:j.error||('xəta '+r.status)}}return j}
 function loginForm(){$('login').innerHTML=`<label>Qrup açarı<input id="gk" value="${GK}"></label><button id="gLogin">Giriş</button> <span class="mut sm">və ya</span> <label>Admin açarı<input id="ak" type="password" value="${AK}"></label><button id="aLogin">Admin girişi</button>`;
@@ -111,7 +117,7 @@ $('chips').innerHTML=activePlayers().map(p=>`<button class="chip ${on.has(p.id)?
 const PR=pairs(A),ap=activePlayers();
 $('hm').innerHTML='<tr><th></th>'+ap.map(p=>`<th>${p.name.slice(0,3)}</th>`).join('')+'</tr>'+ap.map(a=>`<tr><th>${a.name}</th>`+ap.map(c=>{if(a.id==c.id)return'<td></td>';const u=PR[[a.id,c.id].sort((x,y)=>x-y).join(',')];if(!u||u.g<2)return'<td class="mut">·</td>';const p=u.w/u.g*100;return`<td title="${u.w}/${u.g}" style="background:color-mix(in srgb,${p>=50?'var(--ac)':'var(--bad)'} ${Math.round(Math.abs(p-50)*1.6)}%,transparent)">${Math.round(p)}</td>`}).join('')+'</tr>').join('');
 $('recent').innerHTML='<table><tr><th>Tarix</th><th>Qalib</th><th>Məğlub</th><th>Xal</th><th>Şərh</th></tr>'+[...ST.matches].slice(-15).reverse().map(m=>`<tr class="${m.cancelled?'x':''}"><td>${m.played_at.slice(0,16).replace('T',' ')}</td><td>${pname(m.w1)}–${pname(m.w2)}</td><td>${pname(m.l1)}–${pname(m.l2)}</td><td>${m.result}</td><td class="cm">${m.comment||''}</td></tr>`).join('')+'</table>';
-frm();rAdm()}
+frm();rAdm();renderInsights()}
 const AICACHE={};
 async function loadAiChar(pid,q,f){
 const key=pid+':'+q.g;
@@ -124,6 +130,88 @@ easiestOpponent:f.vic?`${pname(f.vic[0])} (${Math.round(f.vic[1].w/f.vic[1].g*10
 try{const r=await api('/characterize',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({playerId:pid,games:q.g,facts})});
 if(PROF!==pid)return;
 AICACHE[key]=r.text;const el=$('chartext');if(el)el.textContent=r.text;const b=$('charai');if(b)b.textContent='🤖 AI'}catch(e){}}
+const PAIRIDS=[];
+const escHtml=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const orderedMatches=ms=>[...ms].sort((a,b)=>String(a.played_at).localeCompare(String(b.played_at))||(a.id||0)-(b.id||0));
+function renderInsights(){
+  $('trendText').textContent=TRENDMSG;
+  $('pairResult').innerHTML=PAIRMSG;
+  const people=activePlayers();
+  if(people.length<4){$('pairControls').textContent='Cüt seçimi üçün ən azı 4 aktiv oyunçu lazımdır.';return}
+  const valid=PAIRIDS.length===4&&new Set(PAIRIDS).size===4&&PAIRIDS.every(id=>people.some(p=>p.id===id));
+  if(!valid)PAIRIDS.splice(0,4,...people.slice(0,4).map(p=>p.id));
+  $('pairControls').innerHTML=Array.from({length:4},(_,i)=>`<label>Oyunçu ${i+1}<select class="pairPlayer" data-index="${i}">${people.map(p=>`<option value="${p.id}" ${p.id===PAIRIDS[i]?'selected':''}>${escHtml(p.name)}</option>`).join('')}</select></label>`).join('')+'<button id="pairBtn">Cütləri müqayisə et</button>';
+  document.querySelectorAll('.pairPlayer').forEach(s=>s.onchange=()=>{PAIRIDS[+s.dataset.index]=+s.value;PAIRMSG='';$('pairResult').textContent=''});
+  $('pairBtn').onclick=comparePairs;
+}
+function trendFacts(pid){
+  const ms=orderedMatches(actMatches()).filter(m=>[m.w1,m.w2,m.l1,m.l2].includes(pid));
+  if(ms.length<3)return null;
+  const recent=ms.slice(-10),previous=ms.slice(-20,-10);
+  const stat=a=>({games:a.length,wins:a.filter(m=>m.w1===pid||m.w2===pid).length,
+    winRate:a.length?Math.round(100*a.filter(m=>m.w1===pid||m.w2===pid).length/a.length):null,
+    points:a.reduce((n,m)=>n+(m.w1===pid||m.w2===pid?m.result:-m.result),0)});
+  const q=calc(actMatches())[pid];
+  return {player:pname(pid),period:ssn||'bütün dövr',last10:stat(recent),previous10:stat(previous),
+    previousAvailable:previous.length>0,totalGames:ms.length,totalPoints:q.pts,
+    currentStreak:q.s>0?`${q.s} qələbə`:`${-q.s} məğlubiyyət`};
+}
+async function requestInsight(kind,facts){
+  return (await api('/insights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind,facts})})).text;
+}
+async function showTrend(){
+  const pid=PROF,facts=trendFacts(pid);
+  if(!facts){$('trendText').textContent='Təhlil üçün bu dövrdə ən azı 3 oyun lazımdır.';return}
+  $('trendBtn').disabled=true;$('trendStatus').textContent='Yazılır…';
+  try{const t=await requestInsight('trend',facts);if(PROF===pid){TRENDMSG=t;$('trendText').textContent=t}}
+  catch(e){$('trendText').textContent='AI təhlili alınmadı: '+(e.msg||'şəbəkə xətası')}
+  finally{$('trendBtn').disabled=false;$('trendStatus').textContent=''}
+}
+function pairHistory(a,b,ms){const x=ms.filter(m=>(m.w1===a&&m.w2===b)||(m.w1===b&&m.w2===a)||(m.l1===a&&m.l2===b)||(m.l1===b&&m.l2===a));
+  return {games:x.length,wins:x.filter(m=>(m.w1===a&&m.w2===b)||(m.w1===b&&m.w2===a)).length}}
+function pairFacts(ids){
+  const ms=actMatches(),P=calc(ms),patterns=[[[0,1],[2,3]],[[0,2],[1,3]],[[0,3],[1,2]]];
+  const arrangements=patterns.map((pattern,index)=>{
+    const teams=pattern.map(indices=>{const [a,b]=indices.map(i=>ids[i]),h=pairHistory(a,b,ms);
+      const individual=([a,b].reduce((sum,id)=>sum+(P[id].g?P[id].w/P[id].g:0.5),0))/2;
+      const rate=(h.wins+1)/(h.games+2);const weight=Math.min(h.games/5,1);
+      const score=weight*rate+(1-weight)*individual;
+      return {names:[pname(a),pname(b)],gamesTogether:h.games,winsTogether:h.wins,
+        winRateTogether:h.games?Math.round(100*h.wins/h.games):null,score};
+    });
+    return {index,teams,balance:Math.abs(teams[0].score-teams[1].score),evidence:teams[0].gamesTogether+teams[1].gamesTogether};
+  });
+  // Prefer a balanced game; direct pair history breaks ties when scores are close.
+  const recommended=[...arrangements].sort((a,b)=>(a.balance-b.balance)-0.01*(a.evidence-b.evidence))[0];
+  return {period:ssn||'bütün dövr',arrangements:arrangements.map(x=>({index:x.index+1,
+    teams:x.teams.map(t=>({players:t.names,gamesTogether:t.gamesTogether,winsTogether:t.winsTogether,winRateTogether:t.winRateTogether})),
+    balanceGapPercent:Math.round(x.balance*100)})),recommendedArrangement:recommended.index+1,
+    note:'Tövsiyə hesablanmış balans və əvvəlki birgə oyunlara əsaslanır; gələcək oyunun proqnozu deyil.'};
+}
+async function comparePairs(){
+  if(new Set(PAIRIDS).size!==4){$('pairResult').textContent='4 fərqli oyunçu seçin.';return}
+  const ids=[...PAIRIDS],f=pairFacts(ids);
+  const rows=f.arrangements.map(x=>`<tr><td>${x.index}</td><td>${x.teams.map(t=>t.players.map(escHtml).join(' + ')).join(' / ')}</td><td>${x.teams.map(t=>t.gamesTogether?t.winsTogether+'/'+t.gamesTogether:'məlumat yoxdur').join(' / ')}</td><td>${x.balanceGapPercent} bənd</td></tr>`).join('');
+  const table=`<div class="sc"><table><tr><th>Variant</th><th>Cütlər</th><th>Birgə Q/O</th><th>Balans fərqi*</th></tr>${rows}</table></div><p class="mut sm">*Balans fərqi əvvəlki nəticələrə əsaslanan təxmini göstəricidir; qələbə ehtimalı deyil.</p>`;
+  $('pairResult').innerHTML=table+'<p>AI izahı yazılır…</p>';
+  $('pairBtn').disabled=true;
+  try{const t=await requestInsight('pairs',f);PAIRMSG=table+`<p><b>Tövsiyə: variant ${f.recommendedArrangement}.</b> ${escHtml(t)}</p>`;$('pairResult').innerHTML=PAIRMSG}
+  catch(e){PAIRMSG=table+`<p><b>Tövsiyə: variant ${f.recommendedArrangement}.</b> AI izahı alınmadı: ${escHtml(e.msg||'şəbəkə xətası')}</p>`;$('pairResult').innerHTML=PAIRMSG}
+  finally{$('pairBtn').disabled=false}
+}
+async function afterMatch(w,l,r){
+  const oldP=calc(ST.matches.filter(m=>!m.cancelled)),oldRank=Object.values(oldP).filter(q=>q.g).sort((a,b)=>b.pts-a.pts).map(q=>q.id);
+  ssn='';await load();
+  const newP=calc(actMatches()),newRank=Object.values(newP).filter(q=>q.g).sort((a,b)=>b.pts-a.pts).map(q=>q.id);
+  const f={winners:w.map(pname),losers:l.map(pname),score:r,
+    players:[...w,...l].map(id=>({name:pname(id),pointsBefore:oldP[id]?.pts||0,pointsAfter:newP[id].pts,
+      eloChange:newP[id].e-(oldP[id]?.e||1000),rankBefore:oldRank.includes(id)?oldRank.indexOf(id)+1:null,
+      rankAfter:newRank.indexOf(id)+1,streakAfter:newP[id].s>0?`${newP[id].s} qələbə`:`${-newP[id].s} məğlubiyyət`}))};
+  $('recapBox').hidden=false;$('recapText').textContent='Oyun əlavə edildi. AI icmalı yazılır…';
+  try{$('recapText').textContent=await requestInsight('recap',f)}
+  catch(e){$('recapText').textContent=`${f.winners.join(' və ')} ${r} xalla qalib gəldi. AI icmalı alınmadı: ${e.msg||'şəbəkə xətası'}`}
+}
+$('trendBtn').onclick=showTrend;
 function allPairs(exclude=[]){const a=activePlayers().filter(p=>!exclude.includes(p.id)),r=[];for(let i=0;i<a.length;i++)for(let j=i+1;j<a.length;j++)r.push([a[i],a[j]]);return r}
 function frm(){const wv=$('wp')?.value,lv=$('lp')?.value,cmv=$('cm')?.value||'',W=allPairs(),pOpt=([x,y],v)=>`<option value="${x.id},${y.id}" ${v&&v===`${x.id},${y.id}`?'selected':''}>${x.name}–${y.name}</option>`;
 if(!W.length){$('fm').innerHTML='<p class="mut sm">Oyuna başlamaq üçün ən azı 4 aktiv oyunçu lazımdır. Admin paneldən əlavə edin.</p>';return}
@@ -137,8 +225,8 @@ $('wp').onchange=()=>frm();
 $('add').onclick=async()=>{$('ferr').textContent='';
 if(!$('lp').value){$('ferr').textContent='Uduzan cütü seçin';return}
 const w=$('wp').value.split(',').map(Number),l=$('lp').value.split(',').map(Number),r=+$('r').value,comment=$('cm').value.trim()||undefined;
-try{await api('/matches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({w,l,r,comment})});ssn='';await load()}
-catch(e){if(e.status===409){if(confirm('Bu oyun artıq son oyun kimi qeyd olunub. Yenə də əlavə edilsin?')){try{await api('/matches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({w,l,r,comment,confirm:true})});ssn='';await load()}catch(e2){$('ferr').textContent=e2.msg}}}
+try{await api('/matches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({w,l,r,comment})});await afterMatch(w,l,r)}
+catch(e){if(e.status===409){if(confirm('Bu oyun artıq son oyun kimi qeyd olunub. Yenə də əlavə edilsin?')){try{await api('/matches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({w,l,r,comment,confirm:true})});await afterMatch(w,l,r)}catch(e2){$('ferr').textContent=e2.msg}}}
 else $('ferr').textContent=e.msg}}}
 function parseCSV(text){text=text.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n');
 const head0=text.split('\n')[0]||'';
