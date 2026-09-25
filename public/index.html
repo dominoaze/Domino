@@ -33,10 +33,10 @@ svg{width:100%;height:auto}
 .charbox{border-radius:10px;padding:11px 13px;border-left:4px solid var(--c);background:color-mix(in srgb,var(--c) 12%,var(--card));margin-top:2px}
 #recapBox{padding:16px;box-shadow:0 4px 16px rgba(0,0,0,.06)}
 #recapBox h2{margin-bottom:12px;font-size:16px}
-#recapText{display:grid;gap:10px}
-.recap-part{padding:12px 14px;border:1px solid var(--bd);border-left:5px solid var(--recap-color);border-radius:10px;background:color-mix(in srgb,var(--recap-color) 11%,var(--card))}
+#recapText{display:grid;gap:10px;min-width:0}
+.recap-part{min-width:0;max-width:100%;padding:12px 14px;border:1px solid var(--bd);border-left:5px solid var(--recap-color);border-radius:10px;background:color-mix(in srgb,var(--recap-color) 11%,var(--card))}
 .recap-part strong{display:block;color:var(--recap-color);font-size:13px;margin-bottom:5px}
-.recap-part p{margin:0;line-height:1.6;white-space:pre-line}
+.recap-part p{margin:0;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
 .recap-winners{--recap-color:#15803d}.recap-losers{--recap-color:#1d4ed8}
 @media(prefers-color-scheme:dark){.recap-winners{--recap-color:#86efac}.recap-losers{--recap-color:#93c5fd}}
 </style><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script></head><body><main>
