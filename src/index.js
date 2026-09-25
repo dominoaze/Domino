@@ -190,19 +190,20 @@ async function characterize(req, env) {
   const b = await req.json().catch(() => null);
   if (!b || !b.playerId || !b.facts) return J({ error: 'playerId və facts lazımdır' }, 400);
   const games = Number(b.games) || 0;
-  
+
   const cached = await env.DB.prepare('SELECT text, games FROM ai_cache WHERE player_id=?').bind(b.playerId).first();
   if (cached && cached.games === games) return J({ text: cached.text, cached: true });
 
- 
-  const apiKey = "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";
-  if (!apiKey || apiKey.includes("SİZİN_API")) return J({ error: 'AI açarı qoşulmayıb' }, 501);
+  // Açar koda yazılmır, birbaşa təhlükəsiz mühitdən (env) oxunur:
+  const apiKey = env.ANTHROPIC_API_KEY;
+
+  if (!apiKey) return J({ error: 'AI açarı qoşulmayıb' }, 501);
 
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 
       'content-type': 'application/json', 
-      'x-api-key': apiKey, 
+      'x-api-key': apiKey.trim(), 
       'anthropic-version': '2023-06-01' 
     },
     body: JSON.stringify({ 
@@ -226,7 +227,11 @@ async function characterize(req, env) {
   ).bind(b.playerId, games, text).run();
 
   return J({ text, cached: false });
-}async function route(req, env) {
+}
+
+
+
+async function route(req, env) {
   const { pathname: p } = new URL(req.url), m = req.method;
   
   if (p === '/api/debug') return J({ 
