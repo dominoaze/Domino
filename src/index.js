@@ -108,18 +108,18 @@ async function importMatches(req, env) {
   const rows = [], skipped = [];
 
   all.forEach((r, i) => {
-    if (![1, 2, 3].includes(Number(r.result))) { 
-      skipped.push({ row: i + 1, reason: 'nəticə 1, 2 və ya 3 olmalıdır' }); 
-      return; 
+    if (![1, 2, 3].includes(Number(r.result))) {
+      skipped.push({ row: i + 1, reason: 'nəticə 1, 2 və ya 3 olmalıdır' });
+      return;
     }
     const names = ['w1', 'w2', 'l1', 'l2'].map((k) => String(r[k] || '').trim());
-    if (names.some((n) => !n)) { 
-      skipped.push({ row: i + 1, reason: 'oyunçu adı boşdur' }); 
-      return; 
+    if (names.some((n) => !n)) {
+      skipped.push({ row: i + 1, reason: 'oyunçu adı boşdur' });
+      return;
     }
-    if (new Set(names.map((n) => n.toLowerCase())).size !== 4) { 
-      skipped.push({ row: i + 1, reason: '4 fərqli oyunçu adı olmalıdır (təkrarlanan ad var)' }); 
-      return; 
+    if (new Set(names.map((n) => n.toLowerCase())).size !== 4) {
+      skipped.push({ row: i + 1, reason: '4 fərqli oyunçu adı olmalıdır (təkrarlanan ad var)' });
+      return;
     }
     rows.push(r);
   });
@@ -151,7 +151,7 @@ async function importMatches(req, env) {
 
   await env.DB.batch(stmts);
   await log(env, 'admin', 'toplu idxal', `${rows.length} oyun əlavə edildi, ${skipped.length} sətir keçildi, ${toCreate.length} yeni oyunçu: ${toCreate.join(', ') || '—'}`);
-  
+
   return J({ inserted: rows.length, created: toCreate, skipped });
 }
 
@@ -165,6 +165,47 @@ async function resetAll(req, env) {
   ]);
   await log(env, 'admin', 'hamısı sıfırlandı', 'bütün oyunçular və oyunlar silindi');
   return J({ ok: true });
+}
+
+function aiPrompt(f) {
+  return `Sən dominoçular üçün qısa, canlı xarakteristika yazan köməkçisən. Aşağıdakı statistik faktlara ƏSASƏN (başqa heç bir ədəd uydurma, yalnız verilənləri istifadə et), Azərbaycan dilində, 1–2 cümləlik, təbii və maraqlı bir xarakteristika yaz. Dostcasına bir tonda yaz, şablonlaşmış ifadələrdən (məs. "domino ustası") yayın, hər dəfə fərqli formada yaz. Yalnız mətnin özünü qaytar, dırnaq işarəsi və ya izah əlavə etmə.
+
+Oyunçu: ${f.name}
+Oyun sayı: ${f.games}
+Qələbə: ${f.wins} (${f.winRate}%)
+Məğlubiyyət: ${f.losses}
+Xal: ${f.pts}
+Elo: ${f.elo}
+Cari seriya: ${f.streak}
+Ən uzun qələbə seriyası: ${f.maxWinStreak}
+Ən uzun məğlubiyyət seriyası: ${f.maxLossStreak}
+Böyük (2-3 xallı) qələbə sayı: ${f.bigWins}
+Ən yaxşı partnyor: ${f.bestPartner || 'yoxdur'}
+Ən çətin partnyor: ${f.worstPartner || 'yoxdur'}
+Ən çətin rəqib: ${f.toughestOpponent || 'yoxdur'}
+Ən asan rəqib: ${f.easiestOpponent || 'yoxdur'}`;
+}
+
+async function characterize(req, env) {
+  const b = await req.json().catch(() => null);
+  if (!b || !b.playerId || !b.facts) return J({ error: 'playerId və facts lazımdır' }, 400);
+  const games = Number(b.games) || 0;
+  const cached = await env.DB.prepare('SELECT text, games FROM ai_cache WHERE player_id=?').bind(b.playerId).first();
+  if (cached && cached.games === games) return J({ text: cached.text, cached: true });
+  if (!env.ANTHROPIC_API_KEY) return J({ error: 'AI açarı qoşulmayıb' }, 501);
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 150, messages: [{ role: 'user', content: aiPrompt(b.facts) }] }),
+  });
+  if (!resp.ok) return J({ error: 'AI xətası: ' + (await resp.text()).slice(0, 200) }, 502);
+  const data = await resp.json();
+  const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text).join(' ').trim();
+  if (!text) return J({ error: 'AI cavab vermədi' }, 502);
+  await env.DB.prepare(
+    "INSERT INTO ai_cache(player_id,games,text) VALUES(?,?,?) ON CONFLICT(player_id) DO UPDATE SET games=excluded.games, text=excluded.text, created_at=datetime('now')"
+  ).bind(b.playerId, games, text).run();
+  return J({ text, cached: false });
 }
 
 async function route(req, env) {
@@ -181,6 +222,7 @@ async function route(req, env) {
     return J({ players: pl.results, matches: ma.results });
   }
   if (p === '/api/matches' && m === 'POST') return addMatch(req, env, role);
+  if (p === '/api/characterize' && m === 'POST') return characterize(req, env);
   if (p.startsWith('/api/admin/')) {
     if (role !== 'admin') return J({ error: 'yalnız admin' }, 403);
     let x;
