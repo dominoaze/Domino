@@ -194,8 +194,8 @@ async function characterize(req, env) {
   const cached = await env.DB.prepare('SELECT text, games FROM ai_cache WHERE player_id=?').bind(b.playerId).first();
   if (cached && cached.games === games) return J({ text: cached.text, cached: true });
 
-  const apiKey = env.ANTHROPIC_API_KEY || "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";
-
+ 
+  const apiKey = "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";
   if (!apiKey || apiKey.includes("SİZİN_API")) return J({ error: 'AI açarı qoşulmayıb' }, 501);
 
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
