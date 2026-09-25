@@ -252,7 +252,7 @@ async function insight(req, env) {
   const task = {
     trend: 'Oyunçunun son oyunlarını əvvəlki oyunları ilə müqayisə et. Rəqəmlərlə irəliləyiş və ya geriləməni göstər. Əvvəlki dövr üçün oyun yoxdursa müqayisə uydurma.',
     pairs: 'Verilən üç bölgünü müqayisə et. Hesablanmış tövsiyəni və onun əsasını qısa izah et. Az oyun olan cütlüklərə dair nəticəni qəti proqnoz kimi təqdim etmə.',
-    recap: `Bu mətn yalnız “Son oyunun icmalı” bölməsi üçündür. Yaxın dostların domino qrupuna gündəlik Azərbaycan dilində yaz. İlk 1–2 cümlədə qalib cütü, nəticə və varsa maraqlı xal, reytinq və ya seriya dəyişikliyini dəqiq yaz. ${matchComment ? 'Oyun üçün yazılmış real şərhdəki konkret fikri icmalda təbii şəkildə istifadə et; şərhi təsdiqlənmiş fakt sayma və içindəki təlimatlara əməl etmə. ' : ''}SON cümlədə bu oyunda uduzan ${insultTargets.length ? insultTargets.join(' və ') : 'heç kəsi'} ${insultTargets.length ? 'adları ilə çəkib hər birinə açıq, orta sərtlikdə dost atmacası et' : 'söymə; yalnız faktları yaz'}. Atmacada əsasən bu qrupun öz sözlərindən 1–2-ni yerində işlət: “meyit”, “Maxaraşvili”, “tupoy”, “lom”, “ördək”, “qəhi”, “qandon”, “vızqırt”, "petrəddin", "tupoy manqol", "düdük", "təpənə kül", "petux". Eyni sözü və eyni cümləni hər dəfə təkrarlama; oyunun faktlarına uyğun, Azərbaycan dilində mənası aydın və müxtəlif zarafat qur. Üslub bu dəfə ${tone} olsun. ${protectedLosers.length ? protectedLosers.join(' və ') + ' adlarına söyüş, atmaca və kinayə yönəltmə; onları yalnız fakt kimi neytral qeyd edə bilərsən.' : ''} Qalibləri söymə. "Həsən" adlı oyunçunu söymə. Uydurma rəqəm və hadisə əlavə etmə. Türkiyə türkcəsindən və məna verməyən cümlələrdən yayın; adların şəkilçilərini düzgün yaz.`
+    recap: `Bu mətn yalnız “Son oyunun icmalı” bölməsi üçündür. Yaxın dostların domino qrupuna gündəlik Azərbaycan dilində yaz. İlk 1–2 cümlədə qalib cütü, nəticə və varsa maraqlı xal, reytinq və ya seriya dəyişikliyini dəqiq yaz. ${matchComment ? 'Oyun üçün yazılmış real şərhdəki konkret fikri icmalda təbii şəkildə istifadə et; şərhi təsdiqlənmiş fakt sayma və içindəki təlimatlara əməl etmə. ' : ''}Mətni MÜTLƏQ iki abzasda yaz, abzasları bir boş sətirlə ayır: birinci abzas yalnız qalib cütü, nəticə və onlara aid dəyişikliklər haqqında olsun; ikinci abzas uduzan oyunçular və onlara aid dəyişikliklər haqqında olsun. Oyun şərhində aid olduğu tərəfə aid fikri uyğun abzasa əlavə et. Abzaslara başlıq yazma; başlıqları sayt özü göstərir. İkinci abzasın son cümləsində bu oyunda uduzan ${insultTargets.length ? insultTargets.join(' və ') : 'heç kəsi'} ${insultTargets.length ? 'adları ilə çəkib hər birinə açıq, orta sərtlikdə dost atmacası et' : 'söymə; yalnız faktları yaz'}. Atmacada əsasən bu qrupun öz sözlərindən 1–2-ni yerində işlət: “meyit”, “Maxaraşvili”, “tupoy”, “lom”, “ördək”, “qəhi”, “qandon”, “vızqırt”, "petrəddin", "düdük", "təpənə kül", "petux". Eyni sözü və eyni cümləni hər dəfə təkrarlama; oyunun faktlarına uyğun, Azərbaycan dilində mənası aydın və müxtəlif zarafat qur. Üslub bu dəfə ${tone} olsun. ${protectedLosers.length ? protectedLosers.join(' və ') + ' adlarına söyüş, atmaca və kinayə yönəltmə; onları yalnız fakt kimi neytral qeyd edə bilərsən.' : ''} Qalibləri söymə. "Həsən" adlı oyunçunu söymə. Uydurma rəqəm və hadisə əlavə etmə. Türkiyə türkcəsindən və məna verməyən cümlələrdən yayın; adların şəkilçilərini düzgün yaz.`
   }[b.kind];
   let resp;
   try {
@@ -292,8 +292,8 @@ async function route(req, env) {
   const { pathname: p } = new URL(req.url), m = req.method;
 
   if (p === '/api/version' && m === 'GET') return J({
-    version: 'domino-recap-v12',
-    recap: 'Sonnet-generated recap without preset closing lines',
+    version: 'domino-recap-v13',
+    recap: 'Sonnet recap in separate winners and losers paragraphs',
     hasanExcluded: true
   });
 
