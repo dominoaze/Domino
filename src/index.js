@@ -210,12 +210,16 @@ async function characterize(req, env) {
 
 async function route(req, env) {
   const { pathname: p } = new URL(req.url), m = req.method;
-  if (p === '/api/debug') return J({ hasGroup: !!env.GROUP_KEY, hasAdmin: !!env.ADMIN_KEY, groupLen: (env.GROUP_KEY || '').length, adminLen: (env.ADMIN_KEY || '').length });
   
-  // AÇARSIZ İŞLƏYƏ BİLƏN ROUTE (Rola baxılmadan keçir)
+  if (p === '/api/debug') return J({ 
+    hasGroup: !!env.GROUP_KEY, 
+    hasAdmin: !!env.ADMIN_KEY, 
+    hasAiKey: !!env.ANTHROPIC_API_KEY, 
+    aiKeyLen: (env.ANTHROPIC_API_KEY || '').length 
+  });
+
   if (p === '/api/characterize' && m === 'POST') return characterize(req, env);
 
-  // GİRİŞ AÇARLARI YOXLAMASI
   const role = await roleOf(req, env);
   if (!role) return J({ error: 'giriş açarı yanlışdır' }, 401);
 
