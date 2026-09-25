@@ -168,7 +168,7 @@ async function resetAll(req, env) {
 }
 
 function aiPrompt(f) {
-  return `Sən dominoçular üçün qısa, canlı xarakteristika yazan köməkçisən. Aşağıdakı statistik faktlara ƏSASƏN (başqa heç bir ədəd uydurma, yalnız verilənləri istifadə et), Azərbaycan dilində, 1–2 cümləlik, təbii və maraqlı bir xarakteristika yaz. Dostcasına və yumorla bir tonda yaz, şablonlaşmış ifadələrdən (məs. "domino ustası") yayın, hər dəfə fərqli formada yaz. Yalnız mətnin özünü qaytar, dırnaq işarəsi və ya izah əlavə etmə.
+  return `Sən dominoçular üçün qısa, canlı xarakteristika yazan köməkçisən. Aşağıdakı statistik faktlara ƏSASƏN (başqa heç bir ədəd uydurma, yalnız verilənləri istifadə et), Azərbaycan dilində, 1–2 cümləlik, təbii və maraqlı bir xarakteristika yaz. Dostcasına bir tonda yaz, şablonlaşmış ifadələrdən (məs. "domino ustası") yayın, hər dəfə fərqli formada yaz. Yalnız mətnin özünü qaytar, dırnaq işarəsi və ya izah əlavə etmə.
 
 Oyunçu: ${f.name}
 Oyun sayı: ${f.games}
@@ -243,7 +243,7 @@ async function insight(req, env) {
   const task = {
     trend: 'Oyunçunun son oyunlarını əvvəlki oyunları ilə müqayisə et. Rəqəmlərlə irəliləyiş və ya geriləməni göstər. Əvvəlki dövr üçün oyun yoxdursa müqayisə uydurma.',
     pairs: 'Verilən üç bölgünü müqayisə et. Hesablanmış tövsiyəni və onun əsasını qısa izah et. Az oyun olan cütlüklərə dair nəticəni qəti proqnoz kimi təqdim etmə.',
-    recap: 'Yeni oyunun qaliblərini, xalı, reytinq və seriya dəyişikliklərindən ən maraqlısını qısa yekunlaşdır. Eyni zamanda bu sözləri yumoristik yaz və Azərbaycan dilindəki mənaya diqqət et'
+    recap: `Bu mətn yalnız “Son oyunun icmalı” bölməsi üçündür. Azərbaycan dilində danışan dostların domino qrupuna yazırsan. 2–3 qısa cümlə yaz: birincidə qalib cütü və nəticəni de; ikincidə yalnız faktlarda görünən maraqlı xal, Elo, reytinq və ya seriya dəyişikliyini qeyd et (belə dəyişiklik yoxdursa bu cümləni burax); son cümlədə həmin oyunun qalib və ya məğlub oyunçusunun adını çəkərək vəziyyətə uyğun, təbii və bir az tikanlı dost zarafatı et. Zarafat rəqəm və ya baş verməmiş hadisə uydurmasın; məcazi ifadə olar. İfadəni gündəlik Azərbaycan dilində qur, Türkiyə türkcəsi sözlərindən, tərcümə kimi səslənən cümlələrdən və mənasız söz oyunlarından yayın. Oyunçu adlarının hal şəkilçilərini və vergülləri düzgün işlət. Üslub nümunəsi (fakt deyil, hazır cavab kimi köçürmə): “Belə getsə, Adil bu gün daşları da özü ilə aparacaq!” və ya “Niyazinin bu gün dominoyla arası heç alınmır.” Hər oyun üçün faktlara uyğun başqa bir zarafat qur.`
   }[b.kind];
   let resp;
   try {
@@ -255,7 +255,8 @@ async function insight(req, env) {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001', max_tokens: 220,
+        model: b.kind === 'recap' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001',
+        max_tokens: b.kind === 'recap' ? 350 : 220,
         messages: [{ role: 'user', content:
           `Azərbaycan dilində 2–3 qısa cümlə yaz. Yalnız aşağıdakı faktlara əsaslan. ` +
           `Heç bir rəqəm, səbəb, taktika və ya nəticə uydurma. ` + task +
