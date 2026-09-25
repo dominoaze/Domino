@@ -168,7 +168,7 @@ async function resetAll(req, env) {
 }
 
 function aiPrompt(f) {
-  return `Sən dominoçular üçün qısa, canlı xarakteristika yazan köməkçisən. Aşağıdakı statistik faktlara ƏSASƏN (başqa heç bir ədəd uydurma, yalnız verilənləri istifadə et), Azərbaycan dilində, 1–2 cümləlik, təbii və maraqlı bir xarakteristika yaz. Dostcasına bir tonda yaz, şablonlaşmış ifadələrdən (məs. "domino ustası") yayın, hər dəfə fərqli formada yaz. Yalnız mətnin özünü qaytar, dırnaq işarəsi və ya izah əlavə etmə.
+  return `Sən dominoçular üçün qısa, canlı xarakteristika yazan köməkçisən. Aşağıdakı statistik faktlara ƏSASƏN (başqa heç bir ədəd uydurma, yalnız verilənləri istifadə et), Azərbaycan dilində, 1–2 cümləlik, təbii və maraqlı bir xarakteristika yaz. Dostcasına və yumorla bir tonda yaz, şablonlaşmış ifadələrdən (məs. "domino ustası") yayın, hər dəfə fərqli formada (məs: maraqlı sözlər işlət: "meyitdir ki lap", "belə getsə dağıdacaq") yaz. Yalnız mətnin özünü qaytar, dırnaq işarəsi və ya izah əlavə etmə.
 
 Oyunçu: ${f.name}
 Oyun sayı: ${f.games}
