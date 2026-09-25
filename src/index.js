@@ -168,7 +168,7 @@ async function resetAll(req, env) {
 }
 
 function aiPrompt(f) {
-  return `Sən dominoçular üçün qısa, canlı xarakteristika yazan köməkçisən. Aşağıdakı statistik faktlara ƏSASƏN (başqa heç bir ədəd uydurma, yalnız verilənləri istifadə et), Azərbaycan dilində, 1–2 cümləlik, təbii və maraqlı bir xarakteristika yaz. Dostcasına və yumorla bir tonda yaz, şablonlaşmış ifadələrdən (məs. "domino ustası") yayın, hər dəfə fərqli formada (məs: maraqlı sözlər işlət: "meyitdir ki lap", "belə getsə dağıdacaq") yaz. Yalnız mətnin özünü qaytar, dırnaq işarəsi və ya izah əlavə etmə.
+  return `Sən dominoçular üçün qısa, canlı xarakteristika yazan köməkçisən. Aşağıdakı statistik faktlara ƏSASƏN (başqa heç bir ədəd uydurma, yalnız verilənləri istifadə et), Azərbaycan dilində, 1–2 cümləlik, təbii və maraqlı bir xarakteristika yaz. Dostcasına və yumorla bir tonda yaz, şablonlaşmış ifadələrdən (məs. "domino ustası") yayın, hər dəfə fərqli formada yaz. Yalnız mətnin özünü qaytar, dırnaq işarəsi və ya izah əlavə etmə.
 
 Oyunçu: ${f.name}
 Oyun sayı: ${f.games}
@@ -243,7 +243,7 @@ async function insight(req, env) {
   const task = {
     trend: 'Oyunçunun son oyunlarını əvvəlki oyunları ilə müqayisə et. Rəqəmlərlə irəliləyiş və ya geriləməni göstər. Əvvəlki dövr üçün oyun yoxdursa müqayisə uydurma.',
     pairs: 'Verilən üç bölgünü müqayisə et. Hesablanmış tövsiyəni və onun əsasını qısa izah et. Az oyun olan cütlüklərə dair nəticəni qəti proqnoz kimi təqdim etmə.',
-    recap: 'Yeni oyunun qaliblərini, xalı, reytinq və seriya dəyişikliklərindən ən maraqlısını qısa yekunlaşdır. Eyni zamanda bu sözləri yumoristik yaz (məs: "Meyitdir ki lap", "Belə getsə dağıdacaq bu gün" və s.)'
+    recap: 'Yeni oyunun qaliblərini, xalı, reytinq və seriya dəyişikliklərindən ən maraqlısını qısa yekunlaşdır. Eyni zamanda bu sözləri yumoristik yaz və Azərbaycan dilindəki mənaya diqqət et'
   }[b.kind];
   let resp;
   try {
