@@ -206,7 +206,7 @@ async function characterize(req, env) {
       'anthropic-version': '2023-06-01' 
     },
     body: JSON.stringify({ 
-      model: 'claude-3-5-haiku-20241022', 
+      model: 'claude-3-haiku-20240307', 
       max_tokens: 150, 
       messages: [{ role: 'user', content: aiPrompt(b.facts) }] 
     }),
@@ -227,6 +227,7 @@ async function characterize(req, env) {
 
   return J({ text, cached: false });
 }
+
 async function route(req, env) {
   const { pathname: p } = new URL(req.url), m = req.method;
 
