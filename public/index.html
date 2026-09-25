@@ -19,6 +19,18 @@ button{cursor:pointer}#pAdd,#gLogin,#aLogin,#add{background:var(--ac);color:#fff
 .chip{border:1px solid var(--c);color:var(--c);background:none;border-radius:99px;padding:2px 10px;margin:2px;cursor:pointer;font:inherit;font-size:12px}.chip.on{background:var(--c);color:#fff}
 svg{width:100%;height:auto}
 .cm{font-size:12px;color:var(--mut);font-style:italic}
+.pselect{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.pchip{border:2px solid var(--c);color:var(--c);background:none;border-radius:99px;padding:5px 13px;cursor:pointer;font:inherit;font-size:13px;font-weight:600;transition:.15s;white-space:nowrap}
+.pchip.on{background:var(--c);color:#fff;box-shadow:0 2px 8px color-mix(in srgb,var(--c) 40%,transparent)}
+.profile-head{display:flex;align-items:center;gap:14px;padding:16px;border-radius:14px;margin-bottom:12px;color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.15)}
+.profile-avatar{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:21px;background:rgba(255,255,255,.28);flex-shrink:0;border:2px solid rgba(255,255,255,.55)}
+.profile-name{font-size:19px;font-weight:800;line-height:1.2}
+.profile-rank{font-size:12.5px;opacity:.92;margin-top:2px}
+.statbox{border-radius:10px;padding:9px 11px;font-size:12px;border-left:4px solid var(--c);background:var(--card);box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.statbox b{font-size:16px;display:block;margin-top:2px}
+.winbar{height:6px;border-radius:99px;background:var(--bd);overflow:hidden;margin-top:5px}
+.winbar>i{display:block;height:100%;background:var(--c);border-radius:99px}
+.charbox{border-radius:10px;padding:11px 13px;border-left:4px solid var(--c);background:color-mix(in srgb,var(--c) 12%,var(--card));margin-top:2px}
 </style><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script></head><body><main>
 <h1>🎲 Domino statistika</h1>
 <section class="card" id="loginBox"><h2>Giriş</h2><div id="login"></div><p id="err" class="sm"></p></section>
@@ -71,9 +83,19 @@ $('ss').innerHTML='<option value="">Bütün dövr</option>'+[...new Set(ST.match
 $('lb').innerHTML='<tr>'+[['','#'],['','Oyunçu'],['g','Oyun'],['w','Q'],['l','M'],['wr','Q%'],['pts','Xal'],['e','Elo'],['','Seriya']].map(([k,t])=>`<th data-k="${k}">${t}</th>`).join('')+'</tr>'+
 L.map((q,i)=>`<tr><td>${i+1}</td><td data-p="${q.id}">${q.name}</td><td>${q.g}</td><td>${q.w}</td><td>${q.l}</td><td>${Math.round(q.w/q.g*100)}%</td><td class="${q.pts<0?'neg':''}">${q.pts>0?'+':''}${q.pts}</td><td>${q.e}</td><td>${q.s>0?q.s+'Q':-q.s+'M'}</td></tr>`).join('');
 const k0=(PROF&&P[PROF])?PROF:(L[0]?L[0].id:null);PROF=k0;
-if(k0){const q=P[k0],f=profStats(k0,A),pc=x=>x?`${pname(x[0])} ${Math.round(x[1].w/x[1].g*100)}% (${x[1].g})`:'—',b=(t,v)=>`<div class="bx"><span>${t}</span><b>${v}</b></div>`;
-$('pf').innerHTML=`<select id="ps">${activePlayers().map(p=>`<option value="${p.id}" ${p.id==k0?'selected':''}>${p.name}</option>`).join('')}</select>`+
-(q.g?`<div class="gr">${b('Oyun',q.g)}${b('Qələbə %',Math.round(q.w/q.g*100)+'%')}${b('Xal',(q.pts>0?'+':'')+q.pts)}${b('Elo',q.e)}${b('Cari seriya',q.s>0?q.s+' Q':-q.s+' M')}${b('Ən uzun Q seriyası',q.ms)}${b('Ən uzun M seriyası',q.ls)}${b('Böyük qələbə (2–3)',q.bw)}${b('Ən yaxşı partnyor',pc(f.pa))}${b('Ən çətin partnyor',pc(f.pw))}${b('Ən çətin rəqib',pc(f.nem))}${b('Ən asan rəqib',pc(f.vic))}</div><p style="margin:0"><b>Xarakteristika:</b> ${chr(q,f)}</p><p class="mut sm" style="margin:4px 0 0">Partnyor/rəqib: ən azı 2 oyun.</p>`:'<p class="mut">Bu dövrdə oyunu yoxdur.</p>')}
+if(k0){const q=P[k0],f=profStats(k0,A),c=col(k0),pc=x=>x?`${pname(x[0])} <b style="font-size:inherit">${Math.round(x[1].w/x[1].g*100)}%</b> <span class="mut">(${x[1].g})</span>`:'—';
+const initials=q.name.trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
+const rank=L.findIndex(x=>x.id===k0)+1,wr=q.g?Math.round(q.w/q.g*100):0;
+const box=(ic,t,v,extra='')=>`<div class="statbox" style="--c:${c}"><span>${ic} <span class="mut">${t}</span></span><b>${v}</b>${extra}</div>`;
+const chips=activePlayers().map(p=>`<button class="pchip ${p.id==k0?'on':''}" data-ps="${p.id}" style="--c:${col(p.id)}">${p.name}</button>`).join('');
+$('pf').innerHTML=`<div class="pselect">${chips}</div>
+<div class="profile-head" style="background:linear-gradient(135deg, ${c}, color-mix(in srgb, ${c} 55%, #000))">
+<div class="profile-avatar">${initials}</div>
+<div><div class="profile-name">${q.name}</div><div class="profile-rank">${rank?'🏅 #'+rank+' reytinqdə':''} · ${q.g} oyun</div></div>
+</div>`+
+(q.g?`<div class="gr">${box('🎯','Qələbə %',wr+'%',`<div class="winbar" style="--c:${c}"><i style="width:${wr}%"></i></div>`)}${box('⭐','Xal',(q.pts>0?'+':'')+q.pts)}${box('📈','Elo',q.e)}${box(q.s>0?'🔥':'❄️','Cari seriya',q.s>0?q.s+' Q':-q.s+' M')}${box('🏆','Ən uzun Q seriyası',q.ms)}${box('🧊','Ən uzun M seriyası',q.ls)}${box('💥','Böyük qələbə (2–3)',q.bw)}${box('🤝','Ən yaxşı partnyor',pc(f.pa))}${box('⚔️','Ən çətin partnyor',pc(f.pw))}${box('😬','Ən çətin rəqib',pc(f.nem))}${box('😎','Ən asan rəqib',pc(f.vic))}</div>
+<div class="charbox" style="--c:${c}">💬 <b>Xarakteristika:</b> ${chr(q,f)}</div>
+<p class="mut sm" style="margin:6px 0 0">Partnyor/rəqib: ən azı 2 oyun.</p>`:'<p class="mut">Bu dövrdə oyunu yoxdur.</p>')}
 else $('pf').innerHTML='<p class="mut">Hələ oyunçu yoxdur.</p>';
 const t=(r,h)=>r.length?`<table><tr><th>${h}</th><th>MVP</th><th>Xal</th></tr>${r.map(([d,k,v])=>`<tr><td>${h=='Ay'?ml(d):d.slice(5,10)}</td><td>${pname(k)}</td><td>${v>0?'+':''}${v}</td></tr>`).join('')}</table>`:'<p class="mut sm">Məlumat yoxdur.</p>';
 $('mv').innerHTML=`<div class="two"><div class="sc"><b>Günün MVP-si</b>${t(mvp(A,m=>m.played_at.slice(0,10)).slice(0,10),'Gün')}</div><div class="sc"><b>Ayın MVP-si</b>${t(mvp(ST.matches.filter(m=>!m.cancelled),m=>mk(m.played_at)),'Ay')}</div></div>`;
@@ -167,7 +189,7 @@ if(w!=='RESET')return;
 try{await api('/admin/reset',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({confirm:'RESET'})});PROF=null;on=null;IMPMSG='';await load()}catch(e){alert(e.msg)}}}
 $('ss').addEventListener('change',e=>{ssn=e.target.value;render()});
 $('lb').addEventListener('click',e=>{const d=e.target.dataset;if(d.k){sk=d.k;render()}if(d.p){PROF=+d.p;render();$('pf').scrollIntoView({behavior:'smooth'})}});
-$('pf').addEventListener('change',e=>{if(e.target.id=='ps'){PROF=+e.target.value;render()}});
+$('pf').addEventListener('click',e=>{const id=e.target.dataset.ps;if(id){PROF=+id;render();$('pf').scrollIntoView({behavior:'smooth'})}});
 $('chips').addEventListener('click',e=>{const k=e.target.dataset.c;if(k){const kk=+k;on.has(kk)?on.delete(kk):on.add(kk);render()}});
 boot();
 </script></body></html>
