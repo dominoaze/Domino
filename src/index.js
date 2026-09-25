@@ -88,7 +88,8 @@ export default {
           hasGroup: !!env.GROUP_KEY, 
           hasAdmin: !!env.ADMIN_KEY, 
           hasAiKey: !!env.ANTHROPIC_API_KEY, 
-          aiKeyLen: (env.ANTHROPIC_API_KEY || '').length 
+          aiKeyLen: (env.ANTHROPIC_API_KEY || '').length,
+          allKeys: Object.keys(env) // Bütün mühit dəyişənlərinin siyahısı
         });
       }
 
