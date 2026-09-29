@@ -28,7 +28,7 @@ async function addMatch(req, env, role) {
   if (!b || !Array.isArray(b.w) || !Array.isArray(b.l)) return J({ error: 'w və l massivləri lazımdır' }, 400);
   const w = b.w.map(Number), l = b.l.map(Number), r = Number(b.r);
   if (w.length !== 2 || l.length !== 2) return J({ error: 'hər cütdə 2 oyunçu olmalıdır' }, 400);
-  if (![1, 2, 3].includes(r)) return J({ error: 'nəticə 1, 2 və ya 3 olmalıdır' }, 400);
+  if (![1, 2, 3, 4].includes(r)) return J({ error: 'nəticə 1, 2, 3 və ya 4 olmalıdır' }, 400);
   if (new Set([...w, ...l]).size !== 4) return J({ error: '4 fərqli oyunçu seçin' }, 400);
   const ids = await activePlayerIds(env);
   if (![...w, ...l].every((i) => ids.has(i))) return J({ error: 'oyunçu tapılmadı və ya arxivdədir' }, 400);
@@ -50,16 +50,77 @@ async function patchMatch(req, env, id) {
   const m = await env.DB.prepare('SELECT * FROM matches WHERE id=?').bind(id).first();
   if (!m) return J({ error: 'oyun tapılmadı' }, 404);
   const sets = [], vals = [], notes = [];
+  const hasTeams = ['w', 'l'].some(k => b[k] !== undefined);
+  let w = [m.w1, m.w2], l = [m.l1, m.l2];
+  if (hasTeams) {
+    if (!Array.isArray(b.w) || !Array.isArray(b.l) || b.w.length !== 2 || b.l.length !== 2)
+      return J({ error: 'hər iki cütdə 2 oyunçu seçin' }, 400);
+    w = b.w.map(Number); l = b.l.map(Number);
+    if (new Set([...w, ...l]).size !== 4 || ![...w, ...l].every(Number.isSafeInteger))
+      return J({ error: '4 fərqli oyunçu seçin' }, 400);
+    const { results } = await env.DB.prepare('SELECT id FROM players').all();
+    const ids = new Set(results.map(p => p.id));
+    if (![...w, ...l].every(i => ids.has(i))) return J({ error: 'oyunçu tapılmadı' }, 400);
+    if (sortedKey(w) !== sortedKey([m.w1, m.w2]) || sortedKey(l) !== sortedKey([m.l1, m.l2])) {
+      sets.push('w1=?','w2=?','l1=?','l2=?'); vals.push(...w,...l);
+      notes.push(`cütlər ${m.w1},${m.w2} / ${m.l1},${m.l2} → ${w.join(',')} / ${l.join(',')}`);
+    }
+  }
   if (b.result !== undefined) {
-    if (![1, 2, 3].includes(Number(b.result))) return J({ error: 'nəticə 1, 2 və ya 3 olmalıdır' }, 400);
-    sets.push('result=?'); vals.push(Number(b.result)); notes.push(`nəticə ${m.result}→${b.result}`);
+    if (![1, 2, 3, 4].includes(Number(b.result))) return J({ error: 'nəticə 1, 2, 3 və ya 4 olmalıdır' }, 400);
+    if (Number(b.result) !== m.result) { sets.push('result=?'); vals.push(Number(b.result)); notes.push(`nəticə ${m.result}→${b.result}`); }
+  }
+  if (b.comment !== undefined) {
+    if (typeof b.comment !== 'string' || b.comment.length > 300) return J({ error: 'şərh 300 simvoldan uzun olmamalıdır' }, 400);
+    if (b.comment.trim() !== (m.comment || '')) {
+      sets.push('comment=?'); vals.push(b.comment.trim() || null); notes.push('şərh dəyişdirildi');
+    }
   }
   if (b.cancelled !== undefined) {
-    sets.push('cancelled=?'); vals.push(b.cancelled ? 1 : 0); notes.push(b.cancelled ? 'ləğv edildi' : 'bərpa edildi');
+    if (Number(!!b.cancelled) !== m.cancelled) {
+      sets.push('cancelled=?'); vals.push(b.cancelled ? 1 : 0); notes.push(b.cancelled ? 'ləğv edildi' : 'bərpa edildi');
+    }
   }
   if (!sets.length) return J({ error: 'dəyişiklik yoxdur' }, 400);
   await env.DB.prepare(`UPDATE matches SET ${sets.join(',')} WHERE id=?`).bind(...vals, id).run();
   await log(env, 'admin', 'oyun dəyişdirildi', `#${id}: ${notes.join(', ')}`);
+  // An old AI recap can describe the wrong players or score after an edit.
+  if (hasTeams || b.result !== undefined || b.comment !== undefined || b.cancelled !== undefined) {
+    await ensureRecapTable(env);
+    const old = await env.DB.prepare('SELECT telegram_message_id FROM match_recaps WHERE match_id=?').bind(id).first();
+    const names = await env.DB.prepare('SELECT id,name FROM players').all();
+    const byId = new Map(names.results.map(p => [p.id,p.name]));
+    const score = b.result === undefined ? m.result : Number(b.result);
+    const cancelled = b.cancelled === undefined ? m.cancelled : Number(!!b.cancelled);
+    const summary = cancelled
+      ? `⚠️ Oyun #${id} ləğv edildi.`
+      : `✏️ Oyun #${id} düzəldildi.\nQaliblər: ${w.map(x => byId.get(x)).join(' və ')}.\nMəğlublar: ${l.map(x => byId.get(x)).join(' və ')}.\nNəticə: ${score} xal.`;
+    // Replace stale AI text; keep the Telegram message ID so later edits can be corrected too.
+    await env.DB.prepare("UPDATE match_recaps SET text=?,telegram_state='sent',updated_at=CURRENT_TIMESTAMP WHERE match_id=?")
+      .bind(summary,id).run();
+    let telegramWarning = null;
+    if (old?.telegram_message_id && env.TELEGRAM_BOT_TOKEN) {
+      try {
+        const chat = await telegramChat(env);
+        if (chat) {
+          let editWarning = null;
+          try {
+          const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN.trim()}/editMessageText`, {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ chat_id: chat.chat_id, message_id: old.telegram_message_id,
+              text: summary, entities: playerNameEntities(summary, [...w,...l].map(x => byId.get(x))) })
+          });
+          const result = await response.json().catch(() => null);
+          if (!response.ok || !result?.ok) throw Error(result?.description || 'Telegram redaktəsi alınmadı');
+          } catch (e) { editWarning = 'Köhnə Telegram icmalı redaktə olunmadı: ' + e.message; }
+          const correctionId = await sendTelegram(env, summary, playerNameEntities(summary, [...w,...l].map(x => byId.get(x))));
+          await env.DB.prepare('UPDATE match_recaps SET telegram_message_id=? WHERE match_id=?').bind(correctionId,id).run();
+          telegramWarning = editWarning;
+        }
+      } catch (e) { telegramWarning = 'Oyun düzəldildi, Telegram bildirişi alınmadı: ' + e.message; }
+    }
+    return J({ ok: true, telegramWarning });
+  }
   return J({ ok: true });
 }
 
@@ -108,8 +169,8 @@ async function importMatches(req, env) {
   const rows = [], skipped = [];
 
   all.forEach((r, i) => {
-    if (![1, 2, 3].includes(Number(r.result))) {
-      skipped.push({ row: i + 1, reason: 'nəticə 1, 2 və ya 3 olmalıdır' });
+    if (![1, 2, 3, 4].includes(Number(r.result))) {
+      skipped.push({ row: i + 1, reason: 'nəticə 1, 2, 3 və ya 4 olmalıdır' });
       return;
     }
     const names = ['w1', 'w2', 'l1', 'l2'].map((k) => String(r[k] || '').trim());
@@ -181,7 +242,7 @@ Elo: ${f.elo}
 Cari seriya: ${f.streak}
 Ən uzun qələbə seriyası: ${f.maxWinStreak}
 Ən uzun məğlubiyyət seriyası: ${f.maxLossStreak}
-Böyük (2-3 xallı) qələbə sayı: ${f.bigWins}
+Böyük (2-4 xallı) qələbə sayı: ${f.bigWins}
 Ən yaxşı partnyor: ${f.bestPartner || 'yoxdur'}
 Ən çətin partnyor: ${f.worstPartner || 'yoxdur'}
 Ən çətin rəqib: ${f.toughestOpponent || 'yoxdur'}
@@ -428,6 +489,13 @@ async function insight(req, env) {
     }
   }
   if (b.kind === 'recap' && Number.isSafeInteger(matchId) && matchId > 0) {
+    const current = await env.DB.prepare('SELECT w1,w2,l1,l2,result,cancelled FROM matches WHERE id=?').bind(matchId).first();
+    const sent = b.facts;
+    if (!current || current.cancelled || current.result !== Number(sent.score) ||
+        sortedKey([current.w1,current.w2]) !== sortedKey((sent.winnerIds || []).map(Number)) ||
+        sortedKey([current.l1,current.l2]) !== sortedKey((sent.loserIds || []).map(Number))) {
+      return J({ error: 'Oyun bu arada dəyişdirilib; köhnə icmal göndərilmədi' }, 409);
+    }
     await env.DB.prepare('INSERT OR IGNORE INTO match_recaps(match_id,text) VALUES(?,?)').bind(matchId, text).run();
     const saved = await env.DB.prepare('SELECT text FROM match_recaps WHERE match_id=?').bind(matchId).first();
     return J({ text: saved.text, telegram: await deliverRecap(env, matchId) });
@@ -491,7 +559,7 @@ async function route(req, env) {
     if ((x = p.match(/^\/api\/admin\/players\/(\d+)$/)) && m === 'DELETE') return removePlayer(env, +x[1]);
     if ((x = p.match(/^\/api\/admin\/matches\/(\d+)$/)) && m === 'PATCH') return patchMatch(req, env, +x[1]);
     if (p === '/api/admin/log' && m === 'GET') return J((await env.DB.prepare('SELECT * FROM audit_log ORDER BY id DESC LIMIT 100').all()).results);
-    if (p === '/api/admin/export.csv' && m === 'GET') return J(await exportCsv(env));
+    if (p === '/api/admin/export.csv' && m === 'GET') return exportCsv(env);
   }
   return J({ error: 'tapılmadı' }, 404);
 }
