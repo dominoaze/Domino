@@ -244,7 +244,23 @@ async function connectTelegramGroup(env) {
   return { title: message.chat.title || 'Domino' };
 }
 
-async function sendTelegram(env, text) {
+function playerNameEntities(text, names) {
+  const collator = new Intl.Collator('az-AZ', { sensitivity: 'accent' });
+  const entities = [];
+  const unique = [...new Set(names.filter(Boolean))].sort((a, b) => b.length - a.length);
+  for (const name of unique) {
+    for (let pos = 0; pos <= text.length - name.length; pos++) {
+      if (pos && /[\p{L}\p{N}]/u.test(text[pos - 1])) continue;
+      if (collator.compare(text.slice(pos, pos + name.length), name) !== 0) continue;
+      if (entities.some(e => pos < e.offset + e.length && pos + name.length > e.offset)) continue;
+      entities.push({ type: 'bold', offset: pos, length: name.length });
+      pos += name.length - 1;
+    }
+  }
+  return entities.sort((a, b) => a.offset - b.offset);
+}
+
+async function sendTelegram(env, text, entities = []) {
   if (!env.TELEGRAM_BOT_TOKEN) throw Error('Bot tokeni Cloudflare-də qoşulmayıb');
   const chat = await telegramChat(env);
   if (!chat) throw Error('Əvvəl Domino qrupunu qoşun');
@@ -252,7 +268,7 @@ async function sendTelegram(env, text) {
   const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN.trim()}/sendMessage`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ chat_id: chat.chat_id, text })
+    body: JSON.stringify({ chat_id: chat.chat_id, text, ...(entities.length ? { entities } : {}) })
   });
   const result = await response.json().catch(() => null);
   if (!response.ok || !result?.ok) throw Error(result?.description || `Telegram xətası (${response.status})`);
@@ -275,7 +291,12 @@ async function deliverRecap(env, matchId) {
       if (last) { losers = winners.slice(last.index + 1).trim(); winners = winners.slice(0, last.index + 1).trim(); }
     }
     const message = `🎲 Son oyunun icmalı · #${matchId}\n\n🟢 Qaliblər\n${winners}${losers ? `\n\n🔵 Məğlublar\n${losers}` : ''}`;
-    const id = await sendTelegram(env, message.slice(0, 4000));
+    const match = await env.DB.prepare(`SELECT a.name w1,b.name w2,c.name l1,d.name l2
+      FROM matches m JOIN players a ON a.id=m.w1 JOIN players b ON b.id=m.w2
+      JOIN players c ON c.id=m.l1 JOIN players d ON d.id=m.l2 WHERE m.id=?`).bind(matchId).first();
+    const telegramText = message.slice(0, 4000);
+    const entities = playerNameEntities(telegramText, match ? [match.w1, match.w2, match.l1, match.l2] : []);
+    const id = await sendTelegram(env, telegramText, entities);
     await env.DB.prepare("UPDATE match_recaps SET telegram_state='sent',telegram_message_id=?,updated_at=CURRENT_TIMESTAMP WHERE match_id=?")
       .bind(id, matchId).run();
     return 'göndərilib';
@@ -418,7 +439,7 @@ async function route(req, env) {
   const { pathname: p } = new URL(req.url), m = req.method;
 
   if (p === '/api/version' && m === 'GET') return J({
-    version: 'domino-telegram-v17',
+    version: 'domino-telegram-v18',
     recap: 'Saved per-game AI recap and Telegram group post',
     hasanExcluded: true
   });
