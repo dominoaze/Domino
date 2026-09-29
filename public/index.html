@@ -45,7 +45,7 @@ svg{width:100%;height:auto}
 <div id="app" hidden>
 <div class="row"><p class="mut sm" id="sub" style="margin:0"></p><label>Dövr<select id="ss"></select></label></div>
 <section class="card"><h2>Yeni oyun</h2><div id="fm"></div><p id="ferr" class="neg sm"></p></section>
-<section class="card" id="recapBox" hidden><h2>📰 Son oyunun icmalı</h2><div id="recapText" aria-live="polite"></div></section>
+<section class="card" id="recapBox" hidden><h2>📰 Son oyunun icmalı</h2><div id="recapText" aria-live="polite"></div><p id="tgStatus" class="mut sm" aria-live="polite"></p></section>
 <section class="card"><h2>Reytinq (adına toxun: profil)</h2><div class="sc"><table id="lb"></table></div>
 <p class="mut sm" style="margin-bottom:0">Xal: nəticə (1/2/3) qalib cütün hər üzvünə +, məğlub cütün hər üzvünə −. Elo: hamı 1000-dən başlayır, güclü rəqibi məğlub etmək çox, zəifi məğlub etmək az xal verir.</p></section>
 <section class="card"><h2>Oyunçu profili</h2><div id="pf"></div></section>
@@ -164,8 +164,9 @@ function trendFacts(pid){
     previousAvailable:previous.length>0,totalGames:ms.length,totalPoints:q.pts,
     currentStreak:q.s>0?`${q.s} qələbə`:`${-q.s} məğlubiyyət`};
 }
-async function requestInsight(kind,facts){
-  return (await api('/insights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind,facts})})).text;
+async function requestInsight(kind,facts,matchId){
+  const result=await api('/insights',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind,facts,matchId})});
+  return kind==='recap'?result:result.text;
 }
 async function showTrend(){
   const pid=PROF,facts=trendFacts(pid);
@@ -224,7 +225,7 @@ function showAiRecap(text){
   if(last){const pos=last.index+1;showRecap(clean.slice(0,pos).trim(),clean.slice(pos).trim())}
   else showRecap(clean,'');
 }
-async function afterMatch(w,l,r,comment){
+async function afterMatch(w,l,r,comment,matchId){
   if($('cm'))$('cm').value='';
   const oldP=calc(ST.matches.filter(m=>!m.cancelled)),oldRank=Object.values(oldP).filter(q=>q.g).sort((a,b)=>b.pts-a.pts).map(q=>q.id);
   const newP=calc([...ST.matches.filter(m=>!m.cancelled),{w1:w[0],w2:w[1],l1:l[0],l2:l[1],result:r}]);
@@ -233,12 +234,15 @@ async function afterMatch(w,l,r,comment){
     players:[...w,...l].map(id=>({name:pname(id),pointsBefore:oldP[id]?.pts||0,pointsAfter:newP[id].pts,
       eloChange:newP[id].e-(oldP[id]?.e||1000),rankBefore:oldRank.includes(id)?oldRank.indexOf(id)+1:null,
       rankAfter:newRank.indexOf(id)+1,streakAfter:newP[id].s>0?`${newP[id].s} qələbə`:`${-newP[id].s} məğlubiyyət`}))};
-  $('recapBox').hidden=false;showRecap(`${f.winners.join(' və ')} ${r} xalla qalib gəldi.${comment?' Şərh: '+comment+'.':''}`,'AI məğlublar barədə yazır…');
-  const recap=requestInsight('recap',f).then(text=>({text}),error=>({error}));
+  $('recapBox').hidden=false;$('tgStatus').textContent='';showRecap(`${f.winners.join(' və ')} ${r} xalla qalib gəldi.${comment?' Şərh: '+comment+'.':''}`,'AI məğlublar barədə yazır…');
+  const recap=requestInsight('recap',f,matchId).then(data=>({data}),error=>({error}));
   ssn='';await load();
   const result=await recap;
   if(result.error)showRecap(`${f.winners.join(' və ')} ${r} xalla qalib gəldi.`,`AI icmalı alınmadı: ${result.error.msg||'şəbəkə xətası'}`);
-  else showAiRecap(result.text);
+  else {
+    showAiRecap(result.data.text);
+    $('tgStatus').textContent=({ 'göndərilib':'✅ İcmal Telegram qrupuna göndərildi.', 'qurulmayıb':'Telegram botu hələ qoşulmayıb.', 'göndərilir':'Telegram qrupuna göndərilir…' })[result.data.telegram] || (result.data.telegram?.startsWith('xəta:')?'⚠ Telegrama göndərilmədi: '+result.data.telegram.slice(6):'');
+  }
 }
 $('trendBtn').onclick=showTrend;
 function allPairs(exclude=[]){const a=activePlayers().filter(p=>!exclude.includes(p.id)),r=[];for(let i=0;i<a.length;i++)for(let j=i+1;j<a.length;j++)r.push([a[i],a[j]]);return r}
@@ -254,8 +258,8 @@ $('wp').onchange=()=>frm();
 $('add').onclick=async()=>{$('ferr').textContent='';
 if(!$('lp').value){$('ferr').textContent='Uduzan cütü seçin';return}
 const w=$('wp').value.split(',').map(Number),l=$('lp').value.split(',').map(Number),r=+$('r').value,comment=$('cm').value.trim()||undefined;
-try{await api('/matches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({w,l,r,comment})});await afterMatch(w,l,r,comment)}
-catch(e){if(e.status===409){if(confirm('Bu oyun artıq son oyun kimi qeyd olunub. Yenə də əlavə edilsin?')){try{await api('/matches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({w,l,r,comment,confirm:true})});await afterMatch(w,l,r,comment)}catch(e2){$('ferr').textContent=e2.msg}}}
+try{const saved=await api('/matches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({w,l,r,comment})});await afterMatch(w,l,r,comment,saved.id)}
+catch(e){if(e.status===409){if(confirm('Bu oyun artıq son oyun kimi qeyd olunub. Yenə də əlavə edilsin?')){try{const saved=await api('/matches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({w,l,r,comment,confirm:true})});await afterMatch(w,l,r,comment,saved.id)}catch(e2){$('ferr').textContent=e2.msg}}}
 else $('ferr').textContent=e.msg}}}
 function parseCSV(text){text=text.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n');
 const head0=text.split('\n')[0]||'';
@@ -288,7 +292,9 @@ function rAdm(){if(ROLE!=='admin'){$('adm').innerHTML='<p class="mut sm">Yalnız
 $('adm').innerHTML=`<p><input id="npName" placeholder="Yeni oyunçu adı"><button id="npAdd">Əlavə et</button>
 &nbsp; <select id="dp">${activePlayers().map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select><button id="dpDel">Sil/arxivlə</button>
 &nbsp; <button id="csv">CSV yüklə</button> <button id="logbtn">Tarixçə</button>
+&nbsp; <button id="tgPrepare">1. Botu hazırla</button> <button id="tgConnect">2. Qrupu qoş</button> <button id="tgTest">3. Telegramı yoxla</button>
 &nbsp; <button id="resetBtn" style="border-color:var(--bad);color:var(--bad)">⚠ Hamısını sıfırla</button></p>
+<p id="tgTestStatus" class="mut sm"></p>
 <div class="sc"><table>${[...ST.matches].slice(-25).reverse().map(m=>`<tr class="${m.cancelled?'x':''}"><td>${m.played_at.slice(0,16).replace('T',' ')}</td><td>${pname(m.w1)}–${pname(m.w2)}</td><td>${pname(m.l1)}–${pname(m.l2)}</td><td><select data-r="${m.id}"><option ${m.result==1?'selected':''}>1</option><option ${m.result==2?'selected':''}>2</option><option ${m.result==3?'selected':''}>3</option></select></td><td><button data-c="${m.id}" data-v="${m.cancelled?0:1}">${m.cancelled?'Bərpa':'Ləğv et'}</button></td></tr>`).join('')}</table></div>
 <div id="logbox"></div>
 <h3 style="font-size:14px">Toplu idxal (Excel .xlsx və ya CSV)</h3>
@@ -299,6 +305,9 @@ $('npAdd').onclick=async()=>{try{await api('/admin/players',{method:'POST',heade
 $('dpDel').onclick=async()=>{try{await api('/admin/players/'+$('dp').value,{method:'DELETE'});await load()}catch(e){alert(e.msg)}};
 $('csv').onclick=()=>{const h=AK?{'x-admin-key':AK}:{};fetch('/api/admin/export.csv',{headers:h}).then(r=>r.blob()).then(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='domino-oyunlar.csv';a.click()})};
 $('logbtn').onclick=async()=>{const l=await api('/admin/log');$('logbox').innerHTML='<ul class="sm">'+l.map(x=>`<li>${x.at.slice(0,16).replace('T',' ')} — ${x.action}: ${x.detail||''}</li>`).join('')+'</ul>'};
+$('tgPrepare').onclick=async()=>{const s=$('tgTestStatus');s.textContent='Bot hazırlanır…';try{await api('/admin/telegram-prepare',{method:'POST'});s.textContent='✅ Hazırdır. İndi Telegramda Domino qrupuna /domino@ShirinliDomino_bot yazın, sonra “2. Qrupu qoş” düyməsinə basın.'}catch(e){s.textContent='⚠ '+(e.msg||'Telegram xətası')}};
+$('tgConnect').onclick=async()=>{const s=$('tgTestStatus');s.textContent='Domino qrupu axtarılır…';try{const result=await api('/admin/telegram-connect',{method:'POST'});s.textContent='✅ '+result.title+' qrupu bağlandı. İndi “3. Telegramı yoxla” düyməsinə basın.'}catch(e){s.textContent='⚠ '+(e.msg||'Qrup tapılmadı')}};
+$('tgTest').onclick=async()=>{const s=$('tgTestStatus');s.textContent='Telegram bağlantısı yoxlanılır…';try{await api('/admin/telegram-test',{method:'POST'});s.textContent='✅ Test mesajı qrupa göndərildi.'}catch(e){s.textContent='⚠ '+(e.msg||'Telegram xətası')}};
 document.querySelectorAll('[data-c]').forEach(b=>b.onclick=async()=>{try{await api('/admin/matches/'+b.dataset.c,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({cancelled:!!+b.dataset.v})});await load()}catch(e){alert(e.msg)}});
 document.querySelectorAll('[data-r]').forEach(s=>s.onchange=async()=>{try{await api('/admin/matches/'+s.dataset.r,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({result:+s.value})});await load()}catch(e){alert(e.msg)}});
 $('impBtn').onclick=async()=>{const f=$('impFile').files[0],st=$('impStatus');const setMsg=(html)=>{IMPMSG=html;st.innerHTML=html};
