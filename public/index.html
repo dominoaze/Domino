@@ -31,6 +31,9 @@ svg{width:100%;height:auto}
 .winbar{height:6px;border-radius:99px;background:var(--bd);overflow:hidden;margin-top:5px}
 .winbar>i{display:block;height:100%;background:var(--c);border-radius:99px}
 .charbox{border-radius:10px;padding:11px 13px;border-left:4px solid var(--c);background:color-mix(in srgb,var(--c) 12%,var(--card));margin-top:2px}
+.rank-up{color:#15803d;font-weight:800}.rank-down{color:var(--bad);font-weight:800}
+.forecast{margin:9px 0;padding:10px 13px;border-radius:9px;background:color-mix(in srgb,var(--ac) 10%,var(--card));border-left:4px solid var(--ac)}
+.editbox{padding:10px;margin:6px 0;border:1px solid var(--bd);border-radius:9px}.editbox .row{justify-content:flex-start}.editbox label{min-width:130px;flex:1}.editbox .edit-comment{flex:2 1 200px}
 #recapBox{padding:16px;box-shadow:0 4px 16px rgba(0,0,0,.06)}
 #recapBox h2{margin-bottom:12px;font-size:16px}
 #recapText{display:grid;gap:10px;min-width:0}
@@ -47,7 +50,7 @@ svg{width:100%;height:auto}
 <section class="card"><h2>Yeni oyun</h2><div id="fm"></div><p id="ferr" class="neg sm"></p></section>
 <section class="card" id="recapBox" hidden><h2>📰 Son oyunun icmalı</h2><div id="recapText" aria-live="polite"></div><p id="tgStatus" class="mut sm" aria-live="polite"></p></section>
 <section class="card"><h2>Reytinq (adına toxun: profil)</h2><div class="sc"><table id="lb"></table></div>
-<p class="mut sm" style="margin-bottom:0">Xal: nəticə (1/2/3) qalib cütün hər üzvünə +, məğlub cütün hər üzvünə −. Elo: hamı 1000-dən başlayır, güclü rəqibi məğlub etmək çox, zəifi məğlub etmək az xal verir.</p></section>
+<p class="mut sm" style="margin-bottom:0">Xal: nəticə (1/2/3/4) qalib cütün hər üzvünə +, məğlub cütün hər üzvünə −. Oxlar son oyundan sonra sıralamanın dəyişməsini göstərir. Elo: hamı 1000-dən başlayır, güclü rəqibi məğlub etmək çox, zəifi məğlub etmək az xal verir.</p></section>
 <section class="card"><h2>Oyunçu profili</h2><div id="pf"></div></section>
 <section class="card"><h2>🤖 Oyun təhlili</h2>
 <button id="trendBtn">Seçilmiş oyunçunun son oyunları</button> <span id="trendStatus" class="mut sm"></span>
@@ -66,7 +69,7 @@ const $=id=>document.getElementById(id),AZ=['Yanvar','Fevral','Mart','Aprel','Ma
 let GK=localStorage.getItem('gk')||'',AK=localStorage.getItem('ak')||'',ROLE=null,ST=null,sk='pts',on=null,ssn='',PROF=null,IMPMSG='',TRENDMSG='',PAIRMSG='';
 async function api(path,opts={}){const h={...(opts.headers||{})};if(AK)h['x-admin-key']=AK;else if(GK)h['x-group-key']=GK;
 const r=await fetch('/api'+path,{...opts,headers:h});const j=await r.json().catch(()=>({}));if(!r.ok){throw {status:r.status,msg:j.error||('xəta '+r.status)}}return j}
-function loginForm(){$('login').innerHTML=`<label>Qrup açarı<input id="gk" value="${GK}"></label><button id="gLogin">Giriş</button> <span class="mut sm">və ya</span> <label>Admin açarı<input id="ak" type="password" value="${AK}"></label><button id="aLogin">Admin girişi</button>`;
+function loginForm(){$('login').innerHTML=`<label>Qrup açarı<input id="gk" value="${escHtml(GK)}"></label><button id="gLogin">Giriş</button> <span class="mut sm">və ya</span> <label>Admin açarı<input id="ak" type="password" value="${escHtml(AK)}"></label><button id="aLogin">Admin girişi</button>`;
 $('gLogin').onclick=()=>{GK=$('gk').value.trim();AK='';localStorage.setItem('gk',GK);localStorage.removeItem('ak');boot()};
 $('aLogin').onclick=()=>{AK=$('ak').value.trim();localStorage.setItem('ak',AK);boot()}}
 async function boot(){loginForm();try{const w=await api('/whoami');ROLE=w.role;$('err').textContent='';$('app').hidden=false;await load()}catch(e){$('app').hidden=true;if(GK||AK)$('err').textContent='Giriş açarı yanlışdır.'}}
@@ -80,39 +83,54 @@ function calc(ms){const P={};ST.players.forEach(p=>P[p.id]={...p,g:0,w:0,l:0,pts
 ms.forEach(m=>{const rw=(P[m.w1].e+P[m.w2].e)/2,rl=(P[m.l1].e+P[m.l2].e)/2,d=20/(1+10**((rw-rl)/400));
 [[[m.w1,m.w2],1],[[m.l1,m.l2],-1]].forEach(([t,sg])=>t.forEach(id=>{const q=P[id];if(!q)return;q.g++;q.e+=sg*d;if(sg>0){q.w++;q.s=q.s>0?q.s+1:1;q.ms=Math.max(q.ms,q.s);if(m.result>1)q.bw++}else{q.l++;q.s=q.s<0?q.s-1:-1;q.ls=Math.max(q.ls,-q.s)}q.pts+=sg*m.result}))});
 Object.values(P).forEach(q=>q.e=Math.round(q.e));return P}
+function standings(ms){return Object.values(calc(ms)).filter(q=>q.g).sort((a,b)=>{
+const av=sk==='wr'?a.w/a.g:a[sk],bv=sk==='wr'?b.w/b.g:b[sk];return bv-av||a.id-b.id})}
+function yearForecast(id){
+const now=new Date(),year=now.getFullYear(),start=new Date(year,0,1),end=new Date(year+1,0,1),elapsed=Math.max(1,(now-start)/86400000),remaining=Math.max(0,(end-now)/86400000);
+const ms=orderedMatches(ST.matches.filter(m=>!m.cancelled&&String(m.played_at).slice(0,4)===String(year)));
+const season=calc(ms),q=season[id];if(!q||q.g<6||!activePlayers().some(p=>p.id===id))return null;
+const players=activePlayers().filter(p=>season[p.id]?.g>=1);
+const estimate=p=>{const s=season[p.id],recent=ms.filter(m=>[m.w1,m.w2,m.l1,m.l2].includes(p.id)).slice(-10);
+const recentRate=recent.reduce((sum,m)=>sum+([m.w1,m.w2].includes(p.id)?m.result:-m.result),0)/Math.max(1,recent.length);
+const rate=recent.length>=4?(recentRate+s.pts/s.g)/2:s.pts/s.g;
+return s.pts+rate*Math.min(100,s.g/elapsed*remaining)};
+const ranked=players.sort((a,b)=>estimate(b)-estimate(a)||a.id-b.id);
+return {rank:ranked.findIndex(p=>p.id===id)+1,players:ranked.length,games:q.g,year};}
 function pairs(ms){const R={};ms.forEach(m=>{[[[m.w1,m.w2],1],[[m.l1,m.l2],0]].forEach(([t,x])=>{const k=[...t].sort((a,b)=>a-b).join(',');const q=R[k]||(R[k]={g:0,w:0});q.g++;q.w+=x})});return R}
 function profStats(k,ms){const pa={},op={};ms.forEach(m=>{const iw=(m.w1==k||m.w2==k),il=(m.l1==k||m.l2==k);if(!iw&&!il)return;const my=iw?[m.w1,m.w2]:[m.l1,m.l2],ot=iw?[m.l1,m.l2]:[m.w1,m.w2],pt=my.find(x=>x!=k);
 const a=pa[pt]||(pa[pt]={g:0,w:0});a.g++;a.w+=iw?1:0;ot.forEach(o=>{const b=op[o]||(op[o]={g:0,w:0});b.g++;b.w+=iw?1:0})});
 const top=(o,f)=>Object.entries(o).filter(([x,v])=>v.g>=2).sort((a,b)=>f(b[1])-f(a[1]))[0];
 return{pa:top(pa,v=>v.w/v.g),pw:top(pa,v=>-v.w/v.g),nem:top(op,v=>-v.w/v.g),vic:top(op,v=>v.w/v.g)}}
 function chr(q,f){if(!q.g)return'Bu dövrdə oyunu yoxdur.';const wr=q.w/q.g*100,t=[wr>=55?'Sabit qalib tipidir':wr<=45?'Hazırda çətin dövr keçirir':'Nəticələri tarazlı olan oyunçudur'];
-if(q.g>=6&&q.bw/Math.max(q.w,1)>=.15)t.push('böyük xallı (2–3) qələbələrə meyllidir');if(q.ms>=4)t.push(`ən uzun seriyası ${q.ms} qələbədir`);
+if(q.g>=6&&q.bw/Math.max(q.w,1)>=.15)t.push('böyük xallı (2–4) qələbələrə meyllidir');if(q.ms>=4)t.push(`ən uzun seriyası ${q.ms} qələbədir`);
 if(f.pa&&f.pa[1].w/f.pa[1].g*100-wr>=12)t.push(`ən çox ${pname(f.pa[0])} ilə uğurludur`);if(f.nem&&f.nem[1].w/f.nem[1].g<.4)t.push(`${pname(f.nem[0])} qarşısında çətinlik çəkir`);return t.join(', ')+'.'}
 function mvp(ms,kf){const D={};ms.forEach(m=>{const d=kf(m),o=D[d]||(D[d]={});[m.w1,m.w2].forEach(k=>o[k]=(o[k]||0)+m.result);[m.l1,m.l2].forEach(k=>o[k]=(o[k]||0)-m.result)});
 return Object.entries(D).map(([d,o])=>{const e=Object.entries(o).sort((a,b)=>b[1]-a[1])[0];return[d,e[0],e[1]]}).reverse()}
 function render(){
-const A=actMatches(),P=calc(A),L=Object.values(P).filter(q=>q.g).sort((a,b)=>sk=='wr'?b.w/b.g-a.w/a.g:b[sk]-a[sk]);
+const A=actMatches(),P=calc(A),L=standings(A),before=standings(orderedMatches(A).slice(0,-1)),beforeRank=new Map(before.map((q,i)=>[q.id,i+1]));
 $('sub').textContent=`${A.length} oyun · ${activePlayers().length} aktiv oyunçu · rol: ${ROLE}`;
 $('ss').innerHTML='<option value="">Bütün dövr</option>'+[...new Set(ST.matches.map(m=>mk(m.played_at)))].sort().map(k=>`<option value="${k}" ${k==ssn?'selected':''}>${ml(k)}</option>`).join('');
 $('lb').innerHTML='<tr>'+[['','#'],['','Oyunçu'],['g','Oyun'],['w','Q'],['l','M'],['wr','Q%'],['pts','Xal'],['e','Elo'],['','Seriya']].map(([k,t])=>`<th data-k="${k}">${t}</th>`).join('')+'</tr>'+
-L.map((q,i)=>`<tr><td>${i+1}</td><td data-p="${q.id}">${q.name}</td><td>${q.g}</td><td>${q.w}</td><td>${q.l}</td><td>${Math.round(q.w/q.g*100)}%</td><td class="${q.pts<0?'neg':''}">${q.pts>0?'+':''}${q.pts}</td><td>${q.e}</td><td>${q.s>0?q.s+'Q':-q.s+'M'}</td></tr>`).join('');
+L.map((q,i)=>{const old=beforeRank.get(q.id),move=old===undefined?'':old>i+1?'<span class="rank-up" title="Pillə qalxıb" aria-label="Pillə qalxıb">↑</span>':old<i+1?'<span class="rank-down" title="Pillə düşüb" aria-label="Pillə düşüb">↓</span>':'';
+return `<tr><td>${i+1} ${move}</td><td data-p="${q.id}">${escHtml(q.name)}</td><td>${q.g}</td><td>${q.w}</td><td>${q.l}</td><td>${Math.round(q.w/q.g*100)}%</td><td class="${q.pts<0?'neg':''}">${q.pts>0?'+':''}${q.pts}</td><td>${q.e}</td><td>${q.s>0?q.s+'Q':-q.s+'M'}</td></tr>`}).join('');
 const k0=(PROF&&P[PROF])?PROF:(L[0]?L[0].id:null);PROF=k0;
-if(k0){const q=P[k0],f=profStats(k0,A),c=col(k0),pc=x=>x?`${pname(x[0])} <b style="font-size:inherit">${Math.round(x[1].w/x[1].g*100)}%</b> <span class="mut">(${x[1].g})</span>`:'—';
+if(k0){const q=P[k0],f=profStats(k0,A),c=col(k0),pc=x=>x?`${escHtml(pname(x[0]))} <b style="font-size:inherit">${Math.round(x[1].w/x[1].g*100)}%</b> <span class="mut">(${x[1].g})</span>`:'—';
 const initials=q.name.trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
-const rank=L.findIndex(x=>x.id===k0)+1,wr=q.g?Math.round(q.w/q.g*100):0;
+const rank=L.findIndex(x=>x.id===k0)+1,wr=q.g?Math.round(q.w/q.g*100):0,forecast=yearForecast(k0);
 const box=(ic,t,v,extra='')=>`<div class="statbox" style="--c:${c}"><span>${ic} <span class="mut">${t}</span></span><b>${v}</b>${extra}</div>`;
-const chips=activePlayers().map(p=>`<button class="pchip ${p.id==k0?'on':''}" data-ps="${p.id}" style="--c:${col(p.id)}">${p.name}</button>`).join('');
+const chips=activePlayers().map(p=>`<button class="pchip ${p.id==k0?'on':''}" data-ps="${p.id}" style="--c:${col(p.id)}">${escHtml(p.name)}</button>`).join('');
 $('pf').innerHTML=`<div class="pselect">${chips}</div>
 <div class="profile-head" style="background:linear-gradient(135deg, ${c}, color-mix(in srgb, ${c} 55%, #000))">
-<div class="profile-avatar">${initials}</div>
-<div><div class="profile-name">${q.name}</div><div class="profile-rank">${rank?'🏅 #'+rank+' reytinqdə':''} · ${q.g} oyun</div></div>
+<div class="profile-avatar">${escHtml(initials)}</div>
+<div><div class="profile-name">${escHtml(q.name)}</div><div class="profile-rank">${rank?'🏅 #'+rank+' reytinqdə':''} · ${q.g} oyun</div></div>
 </div>`+
-(q.g?`<div class="gr">${box('🎯','Qələbə %',wr+'%',`<div class="winbar" style="--c:${c}"><i style="width:${wr}%"></i></div>`)}${box('⭐','Xal',(q.pts>0?'+':'')+q.pts)}${box('📈','Elo',q.e)}${box(q.s>0?'🔥':'❄️','Cari seriya',q.s>0?q.s+' Q':-q.s+' M')}${box('🏆','Ən uzun Q seriyası',q.ms)}${box('🧊','Ən uzun M seriyası',q.ls)}${box('💥','Böyük qələbə (2–3)',q.bw)}${box('🤝','Ən yaxşı partnyor',pc(f.pa))}${box('⚔️','Ən çətin partnyor',pc(f.pw))}${box('😬','Ən çətin rəqib',pc(f.nem))}${box('😎','Ən asan rəqib',pc(f.vic))}</div>
-<div class="charbox" style="--c:${c}">💬 <b>Xarakteristika</b> <span id="charai" class="mut sm"></span><br><span id="chartext">${chr(q,f)}</span></div>
+(q.g?`<div class="gr">${box('🎯','Qələbə %',wr+'%',`<div class="winbar" style="--c:${c}"><i style="width:${wr}%"></i></div>`)}${box('⭐','Xal',(q.pts>0?'+':'')+q.pts)}${box('📈','Elo',q.e)}${box(q.s>0?'🔥':'❄️','Cari seriya',q.s>0?q.s+' Q':-q.s+' M')}${box('🏆','Ən uzun Q seriyası',q.ms)}${box('🧊','Ən uzun M seriyası',q.ls)}${box('💥','Böyük qələbə (2–4)',q.bw)}${box('🤝','Ən yaxşı partnyor',pc(f.pa))}${box('⚔️','Ən çətin partnyor',pc(f.pw))}${box('😬','Ən çətin rəqib',pc(f.nem))}${box('😎','Ən asan rəqib',pc(f.vic))}</div>
+<div class="forecast">📊 <b>${forecast?`İlin sonuna təxmini yer: ${forecast.rank} / ${forecast.players} (${forecast.year})`:'İllik proqnoz üçün ən azı 6 oyun lazımdır.'}</b>${forecast?`<div class="mut sm">Cari ildəki ${forecast.games} oyun, son nəticələr və indiki oyun tempi əsasında təxmin. Oyun sayı və nəticələr dəyişərsə pillə də dəyişəcək.</div>`:''}</div>
+<div class="charbox" style="--c:${c}">💬 <b>Xarakteristika</b> <span id="charai" class="mut sm"></span><br><span id="chartext">${escHtml(chr(q,f))}</span></div>
 <p class="mut sm" style="margin:6px 0 0">Partnyor/rəqib: ən azı 2 oyun.</p>`:'<p class="mut">Bu dövrdə oyunu yoxdur.</p>')}
 else $('pf').innerHTML='<p class="mut">Hələ oyunçu yoxdur.</p>';
 if(k0&&P[k0]&&P[k0].g)loadAiChar(k0,P[k0],profStats(k0,A));
-const t=(r,h)=>r.length?`<table><tr><th>${h}</th><th>MVP</th><th>Xal</th></tr>${r.map(([d,k,v])=>`<tr><td>${h=='Ay'?ml(d):d.slice(5,10)}</td><td>${pname(k)}</td><td>${v>0?'+':''}${v}</td></tr>`).join('')}</table>`:'<p class="mut sm">Məlumat yoxdur.</p>';
+const t=(r,h)=>r.length?`<table><tr><th>${h}</th><th>MVP</th><th>Xal</th></tr>${r.map(([d,k,v])=>`<tr><td>${h=='Ay'?ml(d):d.slice(5,10)}</td><td>${escHtml(pname(k))}</td><td>${v>0?'+':''}${v}</td></tr>`).join('')}</table>`:'<p class="mut sm">Məlumat yoxdur.</p>';
 $('mv').innerHTML=`<div class="two"><div class="sc"><b>Günün MVP-si</b>${t(mvp(A,m=>m.played_at.slice(0,10)).slice(0,10),'Gün')}</div><div class="sc"><b>Ayın MVP-si</b>${t(mvp(ST.matches.filter(m=>!m.cancelled),m=>mk(m.played_at)),'Ay')}</div></div>`;
 if(!on)on=new Set(L.slice(0,4).map(q=>q.id));
 const vis=[...on].filter(k=>P[k]);let lo=0,hi=1;const cum={};vis.forEach(k=>cum[k]=[0]);
@@ -121,14 +139,14 @@ vis.forEach(k=>cum[k].forEach(v=>{lo=Math.min(lo,v);hi=Math.max(hi,v)}));
 const n=A.length||1,X=i=>30+i/n*600,Y=v=>240-(v-lo)/((hi-lo)||1)*220;
 let s=`<line x1="30" x2="630" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--bd)"/><text x="2" y="${Y(hi)+4}" fill="var(--mut)" font-size="10">${hi}</text><text x="2" y="${Y(lo)}" fill="var(--mut)" font-size="10">${lo}</text>`;
 vis.forEach(k=>{s+=`<polyline fill="none" stroke-width="2" stroke="${col(k)}" points="${cum[k].map((v,i)=>X(i)+','+Y(v)).join(' ')}"/>`});$('ch').innerHTML=s;
-$('chips').innerHTML=activePlayers().map(p=>`<button class="chip ${on.has(p.id)?'on':''}" data-c="${p.id}" style="--c:${col(p.id)}">${p.name}</button>`).join('');
+$('chips').innerHTML=activePlayers().map(p=>`<button class="chip ${on.has(p.id)?'on':''}" data-c="${p.id}" style="--c:${col(p.id)}">${escHtml(p.name)}</button>`).join('');
 const PR=pairs(A),ap=activePlayers();
-$('hm').innerHTML='<tr><th></th>'+ap.map(p=>`<th>${p.name.slice(0,3)}</th>`).join('')+'</tr>'+ap.map(a=>`<tr><th>${a.name}</th>`+ap.map(c=>{if(a.id==c.id)return'<td></td>';const u=PR[[a.id,c.id].sort((x,y)=>x-y).join(',')];if(!u||u.g<2)return'<td class="mut">·</td>';const p=u.w/u.g*100;return`<td title="${u.w}/${u.g}" style="background:color-mix(in srgb,${p>=50?'var(--ac)':'var(--bad)'} ${Math.round(Math.abs(p-50)*1.6)}%,transparent)">${Math.round(p)}</td>`}).join('')+'</tr>').join('');
-$('recent').innerHTML='<table><tr><th>Tarix</th><th>Qalib</th><th>Məğlub</th><th>Xal</th><th>Şərh</th></tr>'+[...ST.matches].slice(-15).reverse().map(m=>`<tr class="${m.cancelled?'x':''}"><td>${m.played_at.slice(0,16).replace('T',' ')}</td><td>${pname(m.w1)}–${pname(m.w2)}</td><td>${pname(m.l1)}–${pname(m.l2)}</td><td>${m.result}</td><td class="cm">${m.comment||''}</td></tr>`).join('')+'</table>';
+$('hm').innerHTML='<tr><th></th>'+ap.map(p=>`<th>${escHtml(p.name.slice(0,3))}</th>`).join('')+'</tr>'+ap.map(a=>`<tr><th>${escHtml(a.name)}</th>`+ap.map(c=>{if(a.id==c.id)return'<td></td>';const u=PR[[a.id,c.id].sort((x,y)=>x-y).join(',')];if(!u||u.g<2)return'<td class="mut">·</td>';const p=u.w/u.g*100;return`<td title="${u.w}/${u.g}" style="background:color-mix(in srgb,${p>=50?'var(--ac)':'var(--bad)'} ${Math.round(Math.abs(p-50)*1.6)}%,transparent)">${Math.round(p)}</td>`}).join('')+'</tr>').join('');
+$('recent').innerHTML='<table><tr><th>Tarix</th><th>Qalib</th><th>Məğlub</th><th>Xal</th><th>Şərh</th></tr>'+[...ST.matches].slice(-15).reverse().map(m=>`<tr class="${m.cancelled?'x':''}"><td>${escHtml(m.played_at.slice(0,16).replace('T',' '))}</td><td>${escHtml(pname(m.w1))}–${escHtml(pname(m.w2))}</td><td>${escHtml(pname(m.l1))}–${escHtml(pname(m.l2))}</td><td>${m.result}</td><td class="cm">${escHtml(m.comment||'')}</td></tr>`).join('')+'</table>';
 frm();rAdm();renderInsights()}
 const AICACHE={};
 async function loadAiChar(pid,q,f){
-const key=pid+':'+q.g;
+const key=JSON.stringify([pid,q.g,q.w,q.pts,q.e,q.s,f]);
 if(AICACHE[key]){const el=$('chartext');if(el)el.textContent=AICACHE[key];const b=$('charai');if(b)b.textContent='🤖 AI';return}
 const facts={name:q.name,games:q.g,wins:q.w,losses:q.l,winRate:Math.round(q.w/q.g*100),pts:q.pts,elo:q.e,streak:(q.s>0?q.s+' qələbə':(-q.s)+' məğlubiyyət'),maxWinStreak:q.ms,maxLossStreak:q.ls,bigWins:q.bw,
 bestPartner:f.pa?`${pname(f.pa[0])} (${Math.round(f.pa[1].w/f.pa[1].g*100)}%)`:null,
@@ -226,11 +244,12 @@ function showAiRecap(text){
   else showRecap(clean,'');
 }
 async function afterMatch(w,l,r,comment,matchId){
-  if($('cm'))$('cm').value='';
+  // Clear all required fields immediately, before the AI request completes.
+  if($('fm'))frm(true);
   const oldP=calc(ST.matches.filter(m=>!m.cancelled)),oldRank=Object.values(oldP).filter(q=>q.g).sort((a,b)=>b.pts-a.pts).map(q=>q.id);
   const newP=calc([...ST.matches.filter(m=>!m.cancelled),{w1:w[0],w2:w[1],l1:l[0],l2:l[1],result:r}]);
   const newRank=Object.values(newP).filter(q=>q.g).sort((a,b)=>b.pts-a.pts).map(q=>q.id);
-  const f={winners:w.map(pname),losers:l.map(pname),score:r,comment:comment||'',
+  const f={winners:w.map(pname),losers:l.map(pname),winnerIds:w,loserIds:l,score:r,comment:comment||'',
     players:[...w,...l].map(id=>({name:pname(id),pointsBefore:oldP[id]?.pts||0,pointsAfter:newP[id].pts,
       eloChange:newP[id].e-(oldP[id]?.e||1000),rankBefore:oldRank.includes(id)?oldRank.indexOf(id)+1:null,
       rankAfter:newRank.indexOf(id)+1,streakAfter:newP[id].s>0?`${newP[id].s} qələbə`:`${-newP[id].s} məğlubiyyət`}))};
@@ -246,17 +265,17 @@ async function afterMatch(w,l,r,comment,matchId){
 }
 $('trendBtn').onclick=showTrend;
 function allPairs(exclude=[]){const a=activePlayers().filter(p=>!exclude.includes(p.id)),r=[];for(let i=0;i<a.length;i++)for(let j=i+1;j<a.length;j++)r.push([a[i],a[j]]);return r}
-function frm(){const wv=$('wp')?.value,lv=$('lp')?.value,cmv=$('cm')?.value||'',W=allPairs(),pOpt=([x,y],v)=>`<option value="${x.id},${y.id}" ${v&&v===`${x.id},${y.id}`?'selected':''}>${x.name}–${y.name}</option>`;
-if(!W.length){$('fm').innerHTML='<p class="mut sm">Oyuna başlamaq üçün ən azı 4 aktiv oyunçu lazımdır. Admin paneldən əlavə edin.</p>';return}
-const wSel=(wv?wv.split(',').map(Number):[W[0][0].id,W[0][1].id]),L=allPairs(wSel);
-$('fm').innerHTML=`<label>Qalib cütü<select id="wp">${W.map(p=>pOpt(p,wv)).join('')}</select></label>
-<label>Uduzan cütü<select id="lp">${L.length?L.map(p=>pOpt(p,lv)).join(''):'<option value="">— fərqli qalib cütü seçin —</option>'}</select></label>
-<label>Nəticə<select id="r"><option>1</option><option>2</option><option>3</option></select></label>
-<label style="flex:1 1 200px">Şərh (könüllü)<textarea id="cm" placeholder="məs: Adil tək başına vuruşdu" maxlength="300">${cmv}</textarea></label>
+function frm(clear=false){const wv=clear?'':$('wp')?.value||'',lv=clear?'':$('lp')?.value||'',rv=clear?'':$('r')?.value||'',cmv=clear?'':$('cm')?.value||'',W=allPairs(),pOpt=([x,y],v)=>`<option value="${x.id},${y.id}" ${v===`${x.id},${y.id}`?'selected':''}>${escHtml(x.name)}–${escHtml(y.name)}</option>`;
+if(activePlayers().length<4){$('fm').innerHTML='<p class="mut sm">Oyuna başlamaq üçün ən azı 4 aktiv oyunçu lazımdır. Admin paneldən əlavə edin.</p>';return}
+const wSel=wv?wv.split(',').map(Number):[],L=wv?allPairs(wSel):[],validLoser=L.some(([x,y])=>`${x.id},${y.id}`===lv),selectedLoser=validLoser?lv:'';
+$('fm').innerHTML=`<label>Qalib cütü *<select id="wp" required><option value="" ${!wv?'selected':''} disabled>Qalib cütünü seçin</option>${W.map(p=>pOpt(p,wv)).join('')}</select></label>
+<label>Uduzan cütü *<select id="lp" required><option value="" ${!selectedLoser?'selected':''} disabled>${wv?'Uduzan cütünü seçin':'Əvvəl qalib cütünü seçin'}</option>${L.map(p=>pOpt(p,selectedLoser)).join('')}</select></label>
+<label>Nəticə *<select id="r" required><option value="" ${!rv?'selected':''} disabled>Nəticəni seçin</option>${[1,2,3,4].map(x=>`<option value="${x}" ${rv===String(x)?'selected':''}>${x}</option>`).join('')}</select></label>
+<label style="flex:1 1 200px">Şərh (könüllü)<textarea id="cm" placeholder="məs: Adil tək başına vuruşdu" maxlength="300">${escHtml(cmv)}</textarea></label>
 <button id="add">Əlavə et</button>`;
 $('wp').onchange=()=>frm();
 $('add').onclick=async()=>{$('ferr').textContent='';
-if(!$('lp').value){$('ferr').textContent='Uduzan cütü seçin';return}
+if(!$('wp').value||!$('lp').value||!$('r').value){$('ferr').textContent='Qalib cütünü, uduzan cütünü və nəticəni seçin';return}
 const w=$('wp').value.split(',').map(Number),l=$('lp').value.split(',').map(Number),r=+$('r').value,comment=$('cm').value.trim()||undefined;
 try{const saved=await api('/matches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({w,l,r,comment})});await afterMatch(w,l,r,comment,saved.id)}
 catch(e){if(e.status===409){if(confirm('Bu oyun artıq son oyun kimi qeyd olunub. Yenə də əlavə edilsin?')){try{const saved=await api('/matches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({w,l,r,comment,confirm:true})});await afterMatch(w,l,r,comment,saved.id)}catch(e2){$('ferr').textContent=e2.msg}}}
@@ -290,12 +309,13 @@ window.__sheetInfo='';
 return parseCSV(await file.text())}
 function rAdm(){if(ROLE!=='admin'){$('adm').innerHTML='<p class="mut sm">Yalnız admin görə bilər.</p>';return}
 $('adm').innerHTML=`<p><input id="npName" placeholder="Yeni oyunçu adı"><button id="npAdd">Əlavə et</button>
-&nbsp; <select id="dp">${activePlayers().map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select><button id="dpDel">Sil/arxivlə</button>
+&nbsp; <select id="dp">${activePlayers().map(p=>`<option value="${p.id}">${escHtml(p.name)}</option>`).join('')}</select><button id="dpDel">Sil/arxivlə</button>
 &nbsp; <button id="csv">CSV yüklə</button> <button id="logbtn">Tarixçə</button>
 &nbsp; <button id="tgPrepare">1. Botu hazırla</button> <button id="tgConnect">2. Qrupu qoş</button> <button id="tgTest">3. Telegramı yoxla</button>
 &nbsp; <button id="resetBtn" style="border-color:var(--bad);color:var(--bad)">⚠ Hamısını sıfırla</button></p>
 <p id="tgTestStatus" class="mut sm"></p>
-<div class="sc"><table>${[...ST.matches].slice(-25).reverse().map(m=>`<tr class="${m.cancelled?'x':''}"><td>${m.played_at.slice(0,16).replace('T',' ')}</td><td>${pname(m.w1)}–${pname(m.w2)}</td><td>${pname(m.l1)}–${pname(m.l2)}</td><td><select data-r="${m.id}"><option ${m.result==1?'selected':''}>1</option><option ${m.result==2?'selected':''}>2</option><option ${m.result==3?'selected':''}>3</option></select></td><td><button data-c="${m.id}" data-v="${m.cancelled?0:1}">${m.cancelled?'Bərpa':'Ləğv et'}</button></td></tr>`).join('')}</table></div>
+<div class="sc"><table><tr><th>Oyun</th><th>Tarix</th><th>Qaliblər</th><th>Məğlublar</th><th>Xal</th><th>Əməliyyat</th></tr>${[...ST.matches].slice(-100).reverse().map(m=>`<tr class="${m.cancelled?'x':''}"><td>#${m.id}</td><td>${m.played_at.slice(0,16).replace('T',' ')}</td><td>${escHtml(pname(m.w1))}–${escHtml(pname(m.w2))}</td><td>${escHtml(pname(m.l1))}–${escHtml(pname(m.l2))}</td><td>${m.result}</td><td><button data-edit="${m.id}">Düzəlt</button> <button data-c="${m.id}" data-v="${m.cancelled?0:1}">${m.cancelled?'Bərpa':'Ləğv et'}</button></td></tr>`).join('')}</table></div>
+<div id="matchEditor"></div>
 <div id="logbox"></div>
 <h3 style="font-size:14px">Toplu idxal (Excel .xlsx və ya CSV)</h3>
 <p class="mut sm">Sütunlar (baş sətirdə, kiçik hərflə): <b>w1,w2,l1,l2,result</b> məcburi, <b>played_at</b> (məs: 2026-01-05 10:00:00) və <b>comment</b> könüllü. w1/w2 = qalib cütü, l1/l2 = məğlub cütü, oyunçu adları mətn kimi.</p>
@@ -304,12 +324,24 @@ $('adm').innerHTML=`<p><input id="npName" placeholder="Yeni oyunçu adı"><butto
 $('npAdd').onclick=async()=>{try{await api('/admin/players',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:$('npName').value})});await load()}catch(e){alert(e.msg)}};
 $('dpDel').onclick=async()=>{try{await api('/admin/players/'+$('dp').value,{method:'DELETE'});await load()}catch(e){alert(e.msg)}};
 $('csv').onclick=()=>{const h=AK?{'x-admin-key':AK}:{};fetch('/api/admin/export.csv',{headers:h}).then(r=>r.blob()).then(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='domino-oyunlar.csv';a.click()})};
-$('logbtn').onclick=async()=>{const l=await api('/admin/log');$('logbox').innerHTML='<ul class="sm">'+l.map(x=>`<li>${x.at.slice(0,16).replace('T',' ')} — ${x.action}: ${x.detail||''}</li>`).join('')+'</ul>'};
+$('logbtn').onclick=async()=>{const l=await api('/admin/log');$('logbox').innerHTML='<ul class="sm">'+l.map(x=>`<li>${escHtml(x.at.slice(0,16).replace('T',' '))} — ${escHtml(x.action)}: ${escHtml(x.detail||'')}</li>`).join('')+'</ul>'};
 $('tgPrepare').onclick=async()=>{const s=$('tgTestStatus');s.textContent='Bot hazırlanır…';try{await api('/admin/telegram-prepare',{method:'POST'});s.textContent='✅ Hazırdır. İndi Telegramda Domino qrupuna /domino@ShirinliDomino_bot yazın, sonra “2. Qrupu qoş” düyməsinə basın.'}catch(e){s.textContent='⚠ '+(e.msg||'Telegram xətası')}};
 $('tgConnect').onclick=async()=>{const s=$('tgTestStatus');s.textContent='Domino qrupu axtarılır…';try{const result=await api('/admin/telegram-connect',{method:'POST'});s.textContent='✅ '+result.title+' qrupu bağlandı. İndi “3. Telegramı yoxla” düyməsinə basın.'}catch(e){s.textContent='⚠ '+(e.msg||'Qrup tapılmadı')}};
 $('tgTest').onclick=async()=>{const s=$('tgTestStatus');s.textContent='Telegram bağlantısı yoxlanılır…';try{await api('/admin/telegram-test',{method:'POST'});s.textContent='✅ Test mesajı qrupa göndərildi.'}catch(e){s.textContent='⚠ '+(e.msg||'Telegram xətası')}};
 document.querySelectorAll('[data-c]').forEach(b=>b.onclick=async()=>{try{await api('/admin/matches/'+b.dataset.c,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({cancelled:!!+b.dataset.v})});await load()}catch(e){alert(e.msg)}});
-document.querySelectorAll('[data-r]').forEach(s=>s.onchange=async()=>{try{await api('/admin/matches/'+s.dataset.r,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({result:+s.value})});await load()}catch(e){alert(e.msg)}});
+document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{
+const m=ST.matches.find(x=>x.id===+b.dataset.edit),target=$('matchEditor');if(!m)return;
+const select=(label,id,current)=>`<label>${label}<select id="${id}">${ST.players.map(p=>`<option value="${p.id}" ${p.id===current?'selected':''}>${escHtml(p.name)}${p.archived?' (arxiv)':''}</option>`).join('')}</select></label>`;
+target.innerHTML=`<div class="editbox"><b>✏️ Oyun #${m.id} düzəlişi</b><div class="row">${select('Qalib 1','ew1',m.w1)}${select('Qalib 2','ew2',m.w2)}${select('Məğlub 1','el1',m.l1)}${select('Məğlub 2','el2',m.l2)}<label>Nəticə<select id="er">${[1,2,3,4].map(n=>`<option value="${n}" ${m.result===n?'selected':''}>${n}</option>`).join('')}</select></label><label class="edit-comment">Şərh<textarea id="ec" maxlength="300">${escHtml(m.comment||'')}</textarea></label></div><p><button id="saveMatch">Düzəlişi saxla</button> <button id="closeEdit">Bağla</button></p><p id="editStatus" class="neg sm"></p></div>`;
+$('closeEdit').onclick=()=>target.replaceChildren();
+$('saveMatch').onclick=async()=>{const w=[+$('ew1').value,+$('ew2').value],l=[+$('el1').value,+$('el2').value],s=$('editStatus');
+if(new Set([...w,...l]).size!==4){s.textContent='4 fərqli oyunçu seçin';return}
+const body={w,l,result:+$('er').value,comment:$('ec').value.trim()};$('saveMatch').disabled=true;s.textContent='Saxlanır…';
+try{const result=await api('/admin/matches/'+m.id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+await load();if(result.telegramWarning)alert(result.telegramWarning);}
+catch(e){s.textContent=e.msg||'Xəta';$('saveMatch').disabled=false}};
+target.scrollIntoView({behavior:'smooth',block:'center'});
+});
 $('impBtn').onclick=async()=>{const f=$('impFile').files[0],st=$('impStatus');const setMsg=(html)=>{IMPMSG=html;st.innerHTML=html};
 if(!f){setMsg('Əvvəlcə fayl seçin');return}
 let rows;try{rows=await parseFile(f)}catch(e){setMsg('Fayl oxunmadı: '+e.message);return}
