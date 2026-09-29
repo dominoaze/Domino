@@ -158,10 +158,12 @@ async function importMatches(req, env) {
 async function resetAll(req, env) {
   const b = await req.json().catch(() => ({}));
   if (b.confirm !== 'RESET') return J({ error: 'təsdiq sözü yanlışdır' }, 400);
+  await ensureRecapTable(env);
   await env.DB.batch([
     env.DB.prepare('DELETE FROM matches'),
     env.DB.prepare('DELETE FROM players'),
     env.DB.prepare('DELETE FROM audit_log'),
+    env.DB.prepare('DELETE FROM match_recaps'),
   ]);
   await log(env, 'admin', 'hamısı sıfırlandı', 'bütün oyunçular və oyunlar silindi');
   return J({ ok: true });
@@ -184,6 +186,104 @@ Böyük (2-3 xallı) qələbə sayı: ${f.bigWins}
 Ən çətin partnyor: ${f.worstPartner || 'yoxdur'}
 Ən çətin rəqib: ${f.toughestOpponent || 'yoxdur'}
 Ən asan rəqib: ${f.easiestOpponent || 'yoxdur'}`;
+}
+
+async function ensureRecapTable(env) {
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS match_recaps (
+    match_id INTEGER PRIMARY KEY,
+    text TEXT NOT NULL,
+    telegram_state TEXT NOT NULL DEFAULT 'pending',
+    telegram_message_id INTEGER,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`).run();
+}
+
+async function ensureTelegramTable(env) {
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS telegram_config (
+    id INTEGER PRIMARY KEY CHECK(id=1),
+    chat_id TEXT NOT NULL,
+    chat_title TEXT NOT NULL
+  )`).run();
+}
+
+async function telegramChat(env) {
+  await ensureTelegramTable(env);
+  return env.DB.prepare('SELECT chat_id,chat_title FROM telegram_config WHERE id=1').first();
+}
+
+async function prepareTelegram(env) {
+  if (!env.TELEGRAM_BOT_TOKEN) throw Error('TELEGRAM_BOT_TOKEN secret əlavə edilməyib');
+  const token = env.TELEGRAM_BOT_TOKEN.trim();
+  const me = await fetch(`https://api.telegram.org/bot${token}/getMe`).then(r => r.json());
+  if (!me.ok || me.result?.username?.toLowerCase() !== 'shirinlidomino_bot') {
+    throw Error('Token @ShirinliDomino_bot botuna aid deyil');
+  }
+  // The owner has retired the old relay. Free the bot's incoming updates for one-time group pairing.
+  const response = await fetch(`https://api.telegram.org/bot${token}/deleteWebhook`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ drop_pending_updates: true })
+  });
+  const result = await response.json().catch(() => null);
+  if (!response.ok || !result?.ok) throw Error(result?.description || 'Köhnə Telegram bağlantısı ayrıla bilmədi');
+}
+
+async function connectTelegramGroup(env) {
+  if (!env.TELEGRAM_BOT_TOKEN) throw Error('TELEGRAM_BOT_TOKEN secret əlavə edilməyib');
+  const token = env.TELEGRAM_BOT_TOKEN.trim();
+  const response = await fetch(`https://api.telegram.org/bot${token}/getUpdates?offset=-100&limit=100`);
+  const result = await response.json().catch(() => null);
+  if (!response.ok || !result?.ok) throw Error(result?.description || 'Telegram əmri oxunmadı. Əvvəl “Botu hazırla” düyməsinə basın');
+  const message = [...result.result].reverse().map(update => update.message).find(m =>
+    ['group','supergroup'].includes(m?.chat?.type) && /^\/domino(?:@shirinlidomino_bot)?(?:\s|$)/i.test(m.text || '')
+  );
+  if (!message) throw Error('Qrupda /domino@ShirinliDomino_bot yazın və yenidən basın');
+  await ensureTelegramTable(env);
+  await env.DB.prepare(`INSERT INTO telegram_config(id,chat_id,chat_title) VALUES(1,?,?)
+    ON CONFLICT(id) DO UPDATE SET chat_id=excluded.chat_id,chat_title=excluded.chat_title`)
+    .bind(String(message.chat.id), String(message.chat.title || 'Domino')).run();
+  return { title: message.chat.title || 'Domino' };
+}
+
+async function sendTelegram(env, text) {
+  if (!env.TELEGRAM_BOT_TOKEN) throw Error('Bot tokeni Cloudflare-də qoşulmayıb');
+  const chat = await telegramChat(env);
+  if (!chat) throw Error('Əvvəl Domino qrupunu qoşun');
+  // The token only lives in a Cloudflare secret. Never include it in code or logs.
+  const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN.trim()}/sendMessage`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ chat_id: chat.chat_id, text })
+  });
+  const result = await response.json().catch(() => null);
+  if (!response.ok || !result?.ok) throw Error(result?.description || `Telegram xətası (${response.status})`);
+  return result.result?.message_id ?? null;
+}
+
+async function deliverRecap(env, matchId) {
+  if (!env.TELEGRAM_BOT_TOKEN || !(await telegramChat(env))) return 'qurulmayıb';
+  const row = await env.DB.prepare('SELECT text,telegram_state FROM match_recaps WHERE match_id=?').bind(matchId).first();
+  if (!row) return 'tapılmadı';
+  if (row.telegram_state === 'sent') return 'göndərilib';
+  const claim = await env.DB.prepare("UPDATE match_recaps SET telegram_state='sending',updated_at=CURRENT_TIMESTAMP WHERE match_id=? AND telegram_state IN ('pending','failed')")
+    .bind(matchId).run();
+  if (!claim.meta?.changes) return 'göndərilir';
+  try {
+    const paragraphs = row.text.trim().split(/\n\s*\n|\n/u).map(s => s.trim()).filter(Boolean);
+    let winners = paragraphs[0] || '', losers = paragraphs.slice(1).join(' ');
+    if (!losers) {
+      const sentences = [...winners.matchAll(/[.!?]\s+/gu)], last = sentences.at(-1);
+      if (last) { losers = winners.slice(last.index + 1).trim(); winners = winners.slice(0, last.index + 1).trim(); }
+    }
+    const message = `🎲 Son oyunun icmalı · #${matchId}\n\n🟢 Qaliblər\n${winners}${losers ? `\n\n🔵 Məğlublar\n${losers}` : ''}`;
+    const id = await sendTelegram(env, message.slice(0, 4000));
+    await env.DB.prepare("UPDATE match_recaps SET telegram_state='sent',telegram_message_id=?,updated_at=CURRENT_TIMESTAMP WHERE match_id=?")
+      .bind(id, matchId).run();
+    return 'göndərilib';
+  } catch (e) {
+    await env.DB.prepare("UPDATE match_recaps SET telegram_state='failed',updated_at=CURRENT_TIMESTAMP WHERE match_id=?").bind(matchId).run();
+    console.warn('Telegram recap could not be delivered:', e.message);
+    return 'xəta: ' + e.message;
+  }
 }
 
 
@@ -239,6 +339,23 @@ async function insight(req, env) {
       JSON.stringify(b.facts).length > 8000) {
     return J({ error: 'Təhlil məlumatları uyğun deyil' }, 400);
   }
+  const matchId = Number(b.matchId);
+  if (b.kind === 'recap' && b.matchId !== undefined) {
+    if (!Number.isSafeInteger(matchId) || matchId < 1) return J({ error: 'Oyun ID-si yanlışdır' }, 400);
+    const match = await env.DB.prepare(`SELECT m.id,m.result,m.cancelled,
+      a.name w1,b.name w2,c.name l1,d.name l2 FROM matches m
+      JOIN players a ON a.id=m.w1 JOIN players b ON b.id=m.w2
+      JOIN players c ON c.id=m.l1 JOIN players d ON d.id=m.l2 WHERE m.id=?`).bind(matchId).first();
+    const sameNames = (actual, sent) => Array.isArray(sent) && actual.sort().join('\0') === [...sent].sort().join('\0');
+    if (!match || match.cancelled || Number(b.facts.score) !== match.result ||
+        !sameNames([match.w1, match.w2], b.facts.winners) ||
+        !sameNames([match.l1, match.l2], b.facts.losers)) {
+      return J({ error: 'İcmal oyun nəticəsi ilə uyğun gəlmir' }, 400);
+    }
+    await ensureRecapTable(env);
+    const old = await env.DB.prepare('SELECT text FROM match_recaps WHERE match_id=?').bind(matchId).first();
+    if (old) return J({ text: old.text, telegram: await deliverRecap(env, matchId), cached: true });
+  }
   if (!env.ANTHROPIC_API_KEY) return J({ error: 'AI açarı qoşulmayıb' }, 501);
   const losers = b.kind === 'recap' && Array.isArray(b.facts.losers)
     ? b.facts.losers.filter(x => typeof x === 'string' && x.length > 0 && x.length <= 40) : [];
@@ -281,13 +398,18 @@ async function insight(req, env) {
   }
   if (!resp.ok) return J({ error: `AI xətası (${resp.status})` }, 502);
   const data = await resp.json();
-  const text = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join(' ').trim();
+  let text = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join(' ').trim();
   if (!text) return J({ error: 'AI cavab vermədi' }, 502);
   if (b.kind === 'recap' && protectedLosers.length) {
     const lastSentence = text.split(/(?<=[.!?])\s+/u).filter(Boolean).at(-1) || '';
     if (protectedLosers.some(n => lastSentence.toLocaleLowerCase('az-AZ').includes(n.toLocaleLowerCase('az-AZ')))) {
-      return J({ text: `${b.facts.winners.join(' və ')} bu oyunda ${b.facts.score} xalla qalib gəldi.` });
+      text = `${b.facts.winners.join(' və ')} bu oyunda ${b.facts.score} xalla qalib gəldi.`;
     }
+  }
+  if (b.kind === 'recap' && Number.isSafeInteger(matchId) && matchId > 0) {
+    await env.DB.prepare('INSERT OR IGNORE INTO match_recaps(match_id,text) VALUES(?,?)').bind(matchId, text).run();
+    const saved = await env.DB.prepare('SELECT text FROM match_recaps WHERE match_id=?').bind(matchId).first();
+    return J({ text: saved.text, telegram: await deliverRecap(env, matchId) });
   }
   return J({ text });
 }
@@ -296,8 +418,8 @@ async function route(req, env) {
   const { pathname: p } = new URL(req.url), m = req.method;
 
   if (p === '/api/version' && m === 'GET') return J({
-    version: 'domino-recap-v15',
-    recap: 'Full-length winner facts and loser banter',
+    version: 'domino-telegram-v17',
+    recap: 'Saved per-game AI recap and Telegram group post',
     hasanExcluded: true
   });
 
@@ -326,6 +448,22 @@ async function route(req, env) {
   if (p.startsWith('/api/admin/')) {
     if (role !== 'admin') return J({ error: 'yalnız admin' }, 403);
     let x;
+    if (p === '/api/admin/telegram-test' && m === 'POST') {
+      try {
+        await sendTelegram(env, '🎲 Domino saytından test mesajı. Bot qrupa uğurla qoşuldu.');
+        return J({ ok: true });
+      } catch (e) {
+        return J({ error: 'Telegram testi alınmadı: ' + e.message }, 502);
+      }
+    }
+    if (p === '/api/admin/telegram-prepare' && m === 'POST') {
+      try { await prepareTelegram(env); return J({ ok: true }); }
+      catch (e) { return J({ error: e.message }, 502); }
+    }
+    if (p === '/api/admin/telegram-connect' && m === 'POST') {
+      try { return J(await connectTelegramGroup(env)); }
+      catch (e) { return J({ error: e.message }, 502); }
+    }
     if (p === '/api/admin/players' && m === 'POST') return addPlayer(req, env);
     if (p === '/api/admin/import' && m === 'POST') return importMatches(req, env);
     if (p === '/api/admin/reset' && m === 'POST') return resetAll(req, env);
