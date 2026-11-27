@@ -66,13 +66,12 @@ svg{width:100%;height:auto}
 </main>
 <script>
 const $=id=>document.getElementById(id),AZ=['Yanvar','Fevral','Mart','Aprel','May','İyun','İyul','Avqust','Sentyabr','Oktyabr','Noyabr','Dekabr'];
-let GK=localStorage.getItem('gk')||'',AK=localStorage.getItem('ak')||'',ROLE=null,ST=null,sk='pts',on=null,ssn='',PROF=null,IMPMSG='',TRENDMSG='',PAIRMSG='';
-async function api(path,opts={}){const h={...(opts.headers||{})};if(AK)h['x-admin-key']=AK;else if(GK)h['x-group-key']=GK;
-const r=await fetch('/api'+path,{...opts,headers:h});const j=await r.json().catch(()=>({}));if(!r.ok){throw {status:r.status,msg:j.error||('xəta '+r.status)}}return j}
-function loginForm(){$('login').innerHTML=`<label>Qrup açarı<input id="gk" value="${escHtml(GK)}"></label><button id="gLogin">Giriş</button> <span class="mut sm">və ya</span> <label>Admin açarı<input id="ak" type="password" value="${escHtml(AK)}"></label><button id="aLogin">Admin girişi</button>`;
-$('gLogin').onclick=()=>{GK=$('gk').value.trim();AK='';localStorage.setItem('gk',GK);localStorage.removeItem('ak');boot()};
-$('aLogin').onclick=()=>{AK=$('ak').value.trim();localStorage.setItem('ak',AK);boot()}}
-async function boot(){loginForm();try{const w=await api('/whoami');ROLE=w.role;$('err').textContent='';$('app').hidden=false;await load()}catch(e){$('app').hidden=true;if(GK||AK)$('err').textContent='Giriş açarı yanlışdır.'}}
+try{localStorage.removeItem('gk');localStorage.removeItem('ak')}catch{}
+let ROLE=null,ST=null,sk='pts',on=null,ssn='',PROF=null,IMPMSG='',TRENDMSG='',PAIRMSG='';
+async function api(path,opts={}){const r=await fetch('/api'+path,{...opts,credentials:'same-origin'});const j=await r.json().catch(()=>({}));if(!r.ok)throw {status:r.status,msg:j.error||'Sorğu alınmadı'};return j}
+function loginForm(){$('login').innerHTML='<label>Qrup açarı<input id="gk" type="password"></label><button id="gLogin">Giriş</button> <label>Admin açarı<input id="ak" type="password"></label><button id="aLogin">Admin girişi</button>';
+for(const [id,input,role] of [['gLogin','gk','member'],['aLogin','ak','admin']])$(id).onclick=async()=>{try{await api('/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({role,key:$(input).value.trim()})});await boot()}catch(e){$('err').textContent=e.msg||'Giriş alınmadı'}}}
+async function boot(){loginForm();try{ROLE=(await api('/whoami')).role;await load();$('app').hidden=false;$('err').textContent='';$('login').innerHTML='<button id="logout">Çıxış</button>';$('logout').onclick=async()=>{try{await api('/logout',{method:'POST'});location.reload()}catch(e){$('err').textContent=e.msg||'Çıxış alınmadı'}}}catch(e){$('app').hidden=true;if(e.status!==401)$('err').textContent=e.msg||'Sayt açıla bilmədi'}}
 async function load(){ST=await api('/state');render()}
 const col=k=>{const a=activePlayers();return`hsl(${a.findIndex(p=>p.id==k)*47} 65% 50%)`};
 const mk=d=>d.slice(0,7),ml=k=>AZ[+k.slice(5,7)-1]+' '+k.slice(0,4);
@@ -109,7 +108,7 @@ return Object.entries(D).map(([d,o])=>{const e=Object.entries(o).sort((a,b)=>b[1
 function render(){
 const A=actMatches(),P=calc(A),L=standings(A),before=standings(orderedMatches(A).slice(0,-1)),beforeRank=new Map(before.map((q,i)=>[q.id,i+1]));
 $('sub').textContent=`${A.length} oyun · ${activePlayers().length} aktiv oyunçu · rol: ${ROLE}`;
-$('ss').innerHTML='<option value="">Bütün dövr</option>'+[...new Set(ST.matches.map(m=>mk(m.played_at)))].sort().map(k=>`<option value="${k}" ${k==ssn?'selected':''}>${ml(k)}</option>`).join('');
+$('ss').innerHTML='<option value="">Bütün dövr</option>'+[...new Set(ST.matches.map(m=>mk(m.played_at)))].sort().map(k=>`<option value="${escHtml(k)}" ${k==ssn?'selected':''}>${escHtml(ml(k))}</option>`).join('');
 $('lb').innerHTML='<tr>'+[['','#'],['','Oyunçu'],['g','Oyun'],['w','Q'],['l','M'],['wr','Q%'],['pts','Xal'],['e','Elo'],['','Seriya']].map(([k,t])=>`<th data-k="${k}">${t}</th>`).join('')+'</tr>'+
 L.map((q,i)=>{const old=beforeRank.get(q.id),move=old===undefined?'':old>i+1?'<span class="rank-up" title="Pillə qalxıb" aria-label="Pillə qalxıb">↑</span>':old<i+1?'<span class="rank-down" title="Pillə düşüb" aria-label="Pillə düşüb">↓</span>':'';
 return `<tr><td>${i+1} ${move}</td><td data-p="${q.id}">${escHtml(q.name)}</td><td>${q.g}</td><td>${q.w}</td><td>${q.l}</td><td>${Math.round(q.w/q.g*100)}%</td><td class="${q.pts<0?'neg':''}">${q.pts>0?'+':''}${q.pts}</td><td>${q.e}</td><td>${q.s>0?q.s+'Q':-q.s+'M'}</td></tr>`}).join('');
@@ -130,7 +129,7 @@ $('pf').innerHTML=`<div class="pselect">${chips}</div>
 <p class="mut sm" style="margin:6px 0 0">Partnyor/rəqib: ən azı 2 oyun.</p>`:'<p class="mut">Bu dövrdə oyunu yoxdur.</p>')}
 else $('pf').innerHTML='<p class="mut">Hələ oyunçu yoxdur.</p>';
 if(k0&&P[k0]&&P[k0].g)loadAiChar(k0,P[k0],profStats(k0,A));
-const t=(r,h)=>r.length?`<table><tr><th>${h}</th><th>MVP</th><th>Xal</th></tr>${r.map(([d,k,v])=>`<tr><td>${h=='Ay'?ml(d):d.slice(5,10)}</td><td>${escHtml(pname(k))}</td><td>${v>0?'+':''}${v}</td></tr>`).join('')}</table>`:'<p class="mut sm">Məlumat yoxdur.</p>';
+const t=(r,h)=>r.length?`<table><tr><th>${h}</th><th>MVP</th><th>Xal</th></tr>${r.map(([d,k,v])=>`<tr><td>${escHtml(h=='Ay'?ml(d):d.slice(5,10))}</td><td>${escHtml(pname(k))}</td><td>${v>0?'+':''}${v}</td></tr>`).join('')}</table>`:'<p class="mut sm">Məlumat yoxdur.</p>';
 $('mv').innerHTML=`<div class="two"><div class="sc"><b>Günün MVP-si</b>${t(mvp(A,m=>m.played_at.slice(0,10)).slice(0,10),'Gün')}</div><div class="sc"><b>Ayın MVP-si</b>${t(mvp(ST.matches.filter(m=>!m.cancelled),m=>mk(m.played_at)),'Ay')}</div></div>`;
 if(!on)on=new Set(L.slice(0,4).map(q=>q.id));
 const vis=[...on].filter(k=>P[k]);let lo=0,hi=1;const cum={};vis.forEach(k=>cum[k]=[0]);
@@ -312,9 +311,9 @@ $('adm').innerHTML=`<p><input id="npName" placeholder="Yeni oyunçu adı"><butto
 &nbsp; <select id="dp">${activePlayers().map(p=>`<option value="${p.id}">${escHtml(p.name)}</option>`).join('')}</select><button id="dpDel">Sil/arxivlə</button>
 &nbsp; <button id="csv">CSV yüklə</button> <button id="logbtn">Tarixçə</button>
 &nbsp; <button id="tgPrepare">1. Botu hazırla</button> <button id="tgConnect">2. Qrupu qoş</button> <button id="tgTest">3. Telegramı yoxla</button>
-&nbsp; <button id="resetBtn" style="border-color:var(--bad);color:var(--bad)">⚠ Hamısını sıfırla</button></p>
+</p>
 <p id="tgTestStatus" class="mut sm"></p>
-<div class="sc"><table><tr><th>Oyun</th><th>Tarix</th><th>Qaliblər</th><th>Məğlublar</th><th>Xal</th><th>Əməliyyat</th></tr>${[...ST.matches].slice(-100).reverse().map(m=>`<tr class="${m.cancelled?'x':''}"><td>#${m.id}</td><td>${m.played_at.slice(0,16).replace('T',' ')}</td><td>${escHtml(pname(m.w1))}–${escHtml(pname(m.w2))}</td><td>${escHtml(pname(m.l1))}–${escHtml(pname(m.l2))}</td><td>${m.result}</td><td><button data-edit="${m.id}">Düzəlt</button> <button data-c="${m.id}" data-v="${m.cancelled?0:1}">${m.cancelled?'Bərpa':'Ləğv et'}</button></td></tr>`).join('')}</table></div>
+<div class="sc"><table><tr><th>Oyun</th><th>Tarix</th><th>Qaliblər</th><th>Məğlublar</th><th>Xal</th><th>Əməliyyat</th></tr>${[...ST.matches].slice(-100).reverse().map(m=>`<tr class="${m.cancelled?'x':''}"><td>#${m.id}</td><td>${escHtml(m.played_at.slice(0,16).replace('T',' '))}</td><td>${escHtml(pname(m.w1))}–${escHtml(pname(m.w2))}</td><td>${escHtml(pname(m.l1))}–${escHtml(pname(m.l2))}</td><td>${m.result}</td><td><button data-edit="${m.id}">Düzəlt</button> <button data-c="${m.id}" data-v="${m.cancelled?0:1}">${m.cancelled?'Bərpa':'Ləğv et'}</button></td></tr>`).join('')}</table></div>
 <div id="matchEditor"></div>
 <div id="logbox"></div>
 <h3 style="font-size:14px">Toplu idxal (Excel .xlsx və ya CSV)</h3>
@@ -323,7 +322,7 @@ $('adm').innerHTML=`<p><input id="npName" placeholder="Yeni oyunçu adı"><butto
 <p id="impStatus" class="sm">${IMPMSG}</p>`;
 $('npAdd').onclick=async()=>{try{await api('/admin/players',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:$('npName').value})});await load()}catch(e){alert(e.msg)}};
 $('dpDel').onclick=async()=>{try{await api('/admin/players/'+$('dp').value,{method:'DELETE'});await load()}catch(e){alert(e.msg)}};
-$('csv').onclick=()=>{const h=AK?{'x-admin-key':AK}:{};fetch('/api/admin/export.csv',{headers:h}).then(r=>r.blob()).then(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='domino-oyunlar.csv';a.click()})};
+$('csv').onclick=()=>{fetch('/api/admin/export.csv').then(r=>{if(!r.ok)throw Error('CSV yüklənmədi');return r.blob()}).then(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='domino-oyunlar.csv';a.click()})};
 $('logbtn').onclick=async()=>{const l=await api('/admin/log');$('logbox').innerHTML='<ul class="sm">'+l.map(x=>`<li>${escHtml(x.at.slice(0,16).replace('T',' '))} — ${escHtml(x.action)}: ${escHtml(x.detail||'')}</li>`).join('')+'</ul>'};
 $('tgPrepare').onclick=async()=>{const s=$('tgTestStatus');s.textContent='Bot hazırlanır…';try{await api('/admin/telegram-prepare',{method:'POST'});s.textContent='✅ Hazırdır. İndi Telegramda Domino qrupuna /domino@ShirinliDomino_bot yazın, sonra “2. Qrupu qoş” düyməsinə basın.'}catch(e){s.textContent='⚠ '+(e.msg||'Telegram xətası')}};
 $('tgConnect').onclick=async()=>{const s=$('tgTestStatus');s.textContent='Domino qrupu axtarılır…';try{const result=await api('/admin/telegram-connect',{method:'POST'});s.textContent='✅ '+result.title+' qrupu bağlandı. İndi “3. Telegramı yoxla” düyməsinə basın.'}catch(e){s.textContent='⚠ '+(e.msg||'Qrup tapılmadı')}};
@@ -344,20 +343,18 @@ target.scrollIntoView({behavior:'smooth',block:'center'});
 });
 $('impBtn').onclick=async()=>{const f=$('impFile').files[0],st=$('impStatus');const setMsg=(html)=>{IMPMSG=html;st.innerHTML=html};
 if(!f){setMsg('Əvvəlcə fayl seçin');return}
-let rows;try{rows=await parseFile(f)}catch(e){setMsg('Fayl oxunmadı: '+e.message);return}
+let rows;try{rows=await parseFile(f)}catch(e){setMsg('Fayl oxunmadı: '+escHtml(e.message));return}
 if(!rows.length){setMsg('Fayl boşdur və ya sütunlar tanınmadı');return}
 const need=['w1','w2','l1','l2','result'];if(!need.every(k=>k in rows[0])){setMsg('Sütun adları uyğun deyil. Lazımdır: w1,w2,l1,l2,result');return}
-setMsg(`Faylda ${rows.length} sətir tapıldı${window.__sheetInfo?' ('+window.__sheetInfo+')':''}. Göndərilir...`);await new Promise(r=>setTimeout(r,600));
+setMsg(`Faylda ${rows.length} sətir tapıldı${window.__sheetInfo?' ('+escHtml(window.__sheetInfo)+')':''}. Göndərilir...`);await new Promise(r=>setTimeout(r,600));
 rows.forEach(r=>{if(r.played_at)r.played_at=normDate(r.played_at)});
 const CH=150;let done=0,created=new Set(),skipped=[];
 for(let i=0;i<rows.length;i+=CH){const chunk=rows.slice(i,i+CH);setMsg(`Göndərilir: ${i+1}–${Math.min(i+CH,rows.length)} / ${rows.length}...`);
 try{const r=await api('/admin/import',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({rows:chunk})});done+=r.inserted;r.created.forEach(n=>created.add(n));(r.skipped||[]).forEach(x=>skipped.push({row:i+x.row,reason:x.reason}))}
-catch(e){setMsg(`Xəta (sətir ${i+1} ətrafında): ${e.msg}. ${done} oyun uğurla əlavə olundu.<br>Davam etmək üçün faylı düzəldib qalanını yenidən yükləyin.`);await load();return}}
-const skTxt=skipped.length?`<br><b>${skipped.length} sətir keçildi:</b><br>`+skipped.slice(0,30).map(x=>`sətir ${x.row}: ${x.reason}`).join('<br>')+(skipped.length>30?`<br>... və daha ${skipped.length-30} sətir`:''):'';
+catch(e){setMsg(`Xəta (sətir ${i+1} ətrafında): ${escHtml(e.msg)}. ${done} oyun uğurla əlavə olundu.<br>Davam etmək üçün faylı düzəldib qalanını yenidən yükləyin.`);await load();return}}
+const skTxt=skipped.length?`<br><b>${skipped.length} sətir keçildi:</b><br>`+skipped.slice(0,30).map(x=>`sətir ${x.row}: ${escHtml(x.reason)}`).join('<br>')+(skipped.length>30?`<br>... və daha ${skipped.length-30} sətir`:''):'';
 setMsg(`Bitdi: ${done} oyun əlavə olundu, ${created.size} yeni oyunçu yaradıldı.${skTxt}`);await load()};
-$('resetBtn').onclick=async()=>{const w=prompt('BÜTÜN oyunlar və oyunçular silinəcək, geri qaytarıla bilməz. Təsdiq üçün böyük hərflərlə RESET yazın:');
-if(w!=='RESET')return;
-try{await api('/admin/reset',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({confirm:'RESET'})});PROF=null;on=null;IMPMSG='';await load()}catch(e){alert(e.msg)}}}
+}
 $('ss').addEventListener('change',e=>{ssn=e.target.value;render()});
 $('lb').addEventListener('click',e=>{const d=e.target.dataset;if(d.k){sk=d.k;render()}if(d.p){PROF=+d.p;render();$('pf').scrollIntoView({behavior:'smooth'})}});
 $('pf').addEventListener('click',e=>{const id=e.target.dataset.ps;if(id){PROF=+id;render();$('pf').scrollIntoView({behavior:'smooth'})}});
