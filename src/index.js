@@ -11,7 +11,7 @@ const cookie='__Host-domino';
 const opts='; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=';
 async function signature(env,role,msg){
  const key=role==='admin'?env.ADMIN_ACCESS_KEY:env.GROUP_ACCESS_KEY;
- if(!key||key.length<32||!env.SESSION_SECRET||env.SESSION_SECRET.length<32)throw Error('missing secrets');
+ if(!key||!env.SESSION_SECRET||env.SESSION_SECRET.length<32)throw Error('missing secrets');
  const k=await crypto.subtle.importKey('raw',enc.encode(JSON.stringify([env.SESSION_SECRET,key])),{name:'HMAC',hash:'SHA-256'},false,['sign']);
  return Array.from(new Uint8Array(await crypto.subtle.sign('HMAC',k,enc.encode(msg))),x=>x.toString(16).padStart(2,'0')).join('');
 }
@@ -26,7 +26,7 @@ async function login(req,env){
  const b=await req.json().catch(()=>null);
  if(!b||!['admin','member'].includes(b.role)||typeof b.key!=='string'||b.key.length>256)return J({error:'Yanlış giriş'},400);
  const key=b.role==='admin'?env.ADMIN_ACCESS_KEY:env.GROUP_ACCESS_KEY;
- if(!key||key.length<32||!env.SESSION_SECRET||env.SESSION_SECRET.length<32)return J({error:'Giriş açarları qurulmayıb'},503);
+ if(!key||!env.SESSION_SECRET||env.SESSION_SECRET.length<32)return J({error:'Giriş açarları qurulmayıb'},503);
  if(!await same(b.key,key))return J({error:'Giriş açarı yanlışdır'},401);
  const ttl=b.role==='admin'?28800:2592000, msg=b.role+'.'+(Math.floor(Date.now()/1000)+ttl);
  const r=J({role:b.role});r.headers.set('Set-Cookie',cookie+'='+msg+'.'+await signature(env,b.role,msg)+opts+ttl);return r;
