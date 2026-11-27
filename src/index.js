@@ -1,4 +1,4 @@
-const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json; charset=utf-8' } });
+const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control':'no-store' } });
 const enc = new TextEncoder();
 
 async function same(a, b) {
@@ -7,10 +7,38 @@ async function same(a, b) {
   return crypto.subtle.timingSafeEqual(x, y);
 }
 
+const COOKIE = '__Host-domino_session';
+const TTL = 8 * 60 * 60;
+const cookie = (value, age) => `${COOKIE}=${value}; Path=/; Max-Age=${age}; HttpOnly; Secure; SameSite=Strict`;
+const hex = bytes => Array.from(new Uint8Array(bytes), b => b.toString(16).padStart(2, '0')).join('');
+async function signature(value, env) {
+  const key = await crypto.subtle.importKey('raw', enc.encode(env.SESSION_SECRET), {name:'HMAC',hash:'SHA-256'}, false, ['sign']);
+  return hex(await crypto.subtle.sign('HMAC', key, enc.encode(value)));
+}
+function configured(env) {
+  return !!(env.ADMIN_ACCESS_KEY && env.GROUP_ACCESS_KEY && env.SESSION_SECRET && env.ADMIN_ACCESS_KEY !== env.GROUP_ACCESS_KEY);
+}
 async function roleOf(req, env) {
-  if (await same(req.headers.get('x-admin-key'), env.ADMIN_KEY)) return 'admin';
-  if (await same(req.headers.get('x-group-key'), env.GROUP_KEY)) return 'member';
-  return null;
+  if (!configured(env)) return null;
+  const token = (req.headers.get('Cookie') || '').split(';').map(x=>x.trim()).find(x=>x.startsWith(COOKIE+'='))?.slice(COOKIE.length+1);
+  if (!token) return null;
+  const parts = token.split('.');
+  if (parts.length !== 4) return null;
+  const [role, exp, nonce, sig] = parts;
+  if (!['admin','member'].includes(role) || !/^\d+$/.test(exp) || Number(exp) <= Math.floor(Date.now()/1000) || !/^[a-f0-9]{32}$/.test(nonce)) return null;
+  return await same(sig, await signature(parts.slice(0,3).join('.'), env)) ? role : null;
+}
+function sessionResponse(data, value, age) {
+  return new Response(JSON.stringify(data), {headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','set-cookie':cookie(value,age)}});
+}
+async function login(req, env) {
+  if (!configured(env)) return J({error:'Giriş konfiqurasiyası tamamlanmayıb'},503);
+  const b = await req.json().catch(()=>null);
+  if (!b || typeof b.key !== 'string' || b.key.length > 512 || !['admin','member'].includes(b.role)) return J({error:'Giriş məlumatı yanlışdır'},400);
+  const expected = b.role === 'admin' ? env.ADMIN_ACCESS_KEY : env.GROUP_ACCESS_KEY;
+  if (!await same(b.key, expected)) return J({error:'Giriş açarı yanlışdır'},401);
+  const value = [b.role,Math.floor(Date.now()/1000)+TTL,hex(crypto.getRandomValues(new Uint8Array(16)))].join('.');
+  return sessionResponse({role:b.role}, value+'.'+await signature(value,env), TTL);
 }
 
 const log = (env, actor, action, detail) =>
@@ -216,19 +244,6 @@ async function importMatches(req, env) {
   return J({ inserted: rows.length, created: toCreate, skipped });
 }
 
-async function resetAll(req, env) {
-  const b = await req.json().catch(() => ({}));
-  if (b.confirm !== 'RESET') return J({ error: 'təsdiq sözü yanlışdır' }, 400);
-  await ensureRecapTable(env);
-  await env.DB.batch([
-    env.DB.prepare('DELETE FROM matches'),
-    env.DB.prepare('DELETE FROM players'),
-    env.DB.prepare('DELETE FROM audit_log'),
-    env.DB.prepare('DELETE FROM match_recaps'),
-  ]);
-  await log(env, 'admin', 'hamısı sıfırlandı', 'bütün oyunçular və oyunlar silindi');
-  return J({ ok: true });
-}
 
 function aiPrompt(f) {
   return `Sən dominoçular üçün qısa, canlı xarakteristika yazan köməkçisən. Aşağıdakı statistik faktlara ƏSASƏN (başqa heç bir ədəd uydurma, yalnız verilənləri istifadə et), Azərbaycan dilində, 1–2 cümləlik, təbii və maraqlı bir xarakteristika yaz. Dostcasına bir tonda yaz, şablonlaşmış ifadələrdən (məs. "domino ustası") yayın, hər dəfə fərqli formada yaz. Yalnız mətnin özünü qaytar, dırnaq işarəsi və ya izah əlavə etmə.
@@ -512,12 +527,10 @@ async function route(req, env) {
     hasanExcluded: true
   });
 
-  if (p === '/api/debug') return J({ 
-    hasGroup: !!env.GROUP_KEY, 
-    hasAdmin: !!env.ADMIN_KEY, 
-    hasAiKey: !!env.ANTHROPIC_API_KEY, 
-    aiKeyLen: (env.ANTHROPIC_API_KEY || '').length 
-  });
+  // Reject cross-origin mutations, including login and logout.
+  if (!['GET','HEAD','OPTIONS'].includes(m) && req.headers.get('Origin') !== new URL(req.url).origin) return J({error:'İcazəsiz sorğu'},403);
+  if (p === '/api/login' && m === 'POST') return login(req, env);
+  if (p === '/api/logout' && m === 'POST') return sessionResponse({ok:true}, '', 0);
 
   const role = await roleOf(req, env);
   if (!role) return J({ error: 'giriş açarı yanlışdır' }, 401);
@@ -555,7 +568,6 @@ async function route(req, env) {
     }
     if (p === '/api/admin/players' && m === 'POST') return addPlayer(req, env);
     if (p === '/api/admin/import' && m === 'POST') return importMatches(req, env);
-    if (p === '/api/admin/reset' && m === 'POST') return resetAll(req, env);
     if ((x = p.match(/^\/api\/admin\/players\/(\d+)$/)) && m === 'DELETE') return removePlayer(env, +x[1]);
     if ((x = p.match(/^\/api\/admin\/matches\/(\d+)$/)) && m === 'PATCH') return patchMatch(req, env, +x[1]);
     if (p === '/api/admin/log' && m === 'GET') return J((await env.DB.prepare('SELECT * FROM audit_log ORDER BY id DESC LIMIT 100').all()).results);
@@ -566,6 +578,6 @@ async function route(req, env) {
 
 export default {
   async fetch(req, env) {
-    try { return await route(req, env); } catch (e) { return J({ error: 'server xətası', detail: String(e.message || e) }, 500); }
+    try { return await route(req, env); } catch (e) { return J({ error: 'server xətası' }, 500); }
   },
 };
